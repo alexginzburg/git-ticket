@@ -41,3 +41,49 @@ pub fn ensure_merge_strategy(repo: &Repository, notes_ref: &str) -> Result<(), E
     }
     Ok(())
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointerKind {
+    Ticket,
+    Review,
+}
+
+impl PointerKind {
+    fn prefix(self) -> &'static str {
+        match self {
+            PointerKind::Ticket => "refs/git-ticket/tickets/",
+            PointerKind::Review => "refs/git-ticket/reviews/",
+        }
+    }
+}
+
+pub fn pointer_ref_name(kind: PointerKind, id: &str) -> String {
+    format!("{}{id}", kind.prefix())
+}
+
+pub fn set_pointer_ref(repo: &Repository, kind: PointerKind, id: &str, target: Oid) -> Result<(), Error> {
+    repo.reference(&pointer_ref_name(kind, id), target, true, "git-ticket pointer")?;
+    Ok(())
+}
+
+pub fn resolve_pointer_ref(repo: &Repository, kind: PointerKind, id: &str) -> Option<Oid> {
+    repo.find_reference(&pointer_ref_name(kind, id))
+        .ok()
+        .and_then(|r| r.target())
+}
+
+pub fn list_pointer_ids(repo: &Repository, kind: PointerKind) -> Vec<String> {
+    let prefix = kind.prefix();
+    let glob = format!("{prefix}*");
+    repo.references_glob(&glob)
+        .map(|iter| {
+            iter.filter_map(|r| r.ok())
+                .filter_map(|r| r.name().map(|n| n.trim_start_matches(prefix).to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn merge_base(repo: &Repository, a: Oid, b: Oid) -> Result<Oid, Error> {
+    repo.merge_base(a, b)
+}

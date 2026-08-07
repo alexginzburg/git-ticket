@@ -13,6 +13,10 @@ pub enum Command {
         #[command(subcommand)]
         action: TicketAction,
     },
+    Review {
+        #[command(subcommand)]
+        action: ReviewAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -46,5 +50,32 @@ pub enum TicketAction {
     Comment {
         id: String,
         text: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ReviewAction {
+    Start {
+        target: Option<String>,
+        #[arg(long)]
+        base: Option<String>,
+    },
+    Comment {
+        review_id: String,
+        #[arg(long)]
+        file: String,
+        #[arg(long)]
+        line: u32,
+        text: String,
+        #[arg(long)]
+        reply_to: Option<String>,
+    },
+    Verdict {
+        review_id: String,
+        verdict: String,
+        summary: Option<String>,
+    },
+    Show {
+        review_id: String,
     },
 }

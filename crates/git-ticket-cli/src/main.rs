@@ -9,5 +9,6 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Command::Ticket { action } => commands::ticket::run(action),
+        Command::Review { action } => commands::review::run(action),
     }
 }

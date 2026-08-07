@@ -1,5 +1,6 @@
 use git2::Repository;
 use git_ticket_core::event::TicketStatus;
+use git_ticket_core::repo::{merge_base, resolve_pointer_ref, PointerKind};
 use git_ticket_core::ticket_service::*;
 
 fn init_repo_with_branch(branch: &str) -> (tempfile::TempDir, Repository) {
@@ -17,6 +18,67 @@ fn init_repo_with_branch(branch: &str) -> (tempfile::TempDir, Repository) {
     }
     repo.set_head(&format!("refs/heads/{branch}")).unwrap();
     (dir, repo)
+}
+
+/// Creates a repo with a `main` branch, then a `feature` branch that
+/// diverges from `main` with one extra commit. HEAD ends up on `feature`.
+/// Returns (tempdir, repo, main_tip, feature_tip).
+fn init_repo_with_diverging_branches() -> (tempfile::TempDir, Repository, git2::Oid, git2::Oid) {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = Repository::init(dir.path()).unwrap();
+    let sig = git2::Signature::now("Alex", "alex@example.com").unwrap();
+
+    let root_oid = {
+        let tree_id = repo.index().unwrap().write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "root commit", &tree, &[]).unwrap()
+    };
+    // The initial commit lands on whatever branch `git init`'s default HEAD
+    // points at (commonly "main" or "master" depending on global config).
+    // Only create the "main" branch explicitly if it doesn't already exist.
+    if repo.find_branch("main", git2::BranchType::Local).is_err() {
+        let commit = repo.find_commit(root_oid).unwrap();
+        repo.branch("main", &commit, false).unwrap();
+    }
+
+    // Branch `feature` off the root commit, then add a commit only on `feature`.
+    {
+        let commit = repo.find_commit(root_oid).unwrap();
+        repo.branch("feature", &commit, false).unwrap();
+    }
+    repo.set_head("refs/heads/feature").unwrap();
+    repo.checkout_head(None).unwrap();
+
+    let feature_tip = {
+        let parent = repo.find_commit(root_oid).unwrap();
+        let tree_id = repo.index().unwrap().write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let oid = repo
+            .commit(Some("HEAD"), &sig, &sig, "feature-only commit", &tree, &[&parent])
+            .unwrap();
+        repo.reference("refs/heads/feature", oid, true, "advance feature").unwrap();
+        oid
+    };
+
+    (dir, repo, root_oid, feature_tip)
+}
+
+#[test]
+fn create_ticket_anchors_to_merge_base_of_base_branch() {
+    let (_dir, repo, main_tip, feature_tip) = init_repo_with_diverging_branches();
+    assert_ne!(main_tip, feature_tip, "feature must diverge from main");
+
+    let created = create_ticket(&repo, "main", "Fix login", "details", None, "alex", 100).unwrap();
+    assert_eq!(created.branch, "feature");
+
+    let expected_base = merge_base(&repo, feature_tip, main_tip).unwrap();
+    // In this setup main IS the divergence point, so the merge-base equals main's tip.
+    assert_eq!(expected_base, main_tip);
+    assert_ne!(expected_base, feature_tip);
+
+    let anchored = resolve_pointer_ref(&repo, PointerKind::Ticket, &created.id).unwrap();
+    assert_eq!(anchored, expected_base);
+    assert_ne!(anchored, feature_tip);
 }
 
 #[test]

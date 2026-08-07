@@ -42,6 +42,14 @@ pub fn ensure_merge_strategy(repo: &Repository, notes_ref: &str) -> Result<(), E
     Ok(())
 }
 
+/// Runs the same idempotent setup lazily performed on first write, so
+/// `git ticket init` and organic first use converge on identical state.
+pub fn init_repo_config(repo: &Repository) -> Result<(), Error> {
+    ensure_merge_strategy(repo, TICKETS_NOTES_REF)?;
+    ensure_merge_strategy(repo, REVIEWS_NOTES_REF)?;
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PointerKind {
     Ticket,

@@ -9,6 +9,7 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+    Init,
     Ticket {
         #[command(subcommand)]
         action: TicketAction,

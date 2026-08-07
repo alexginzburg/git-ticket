@@ -8,6 +8,7 @@ use cli::{Cli, Command};
 fn main() {
     let cli = Cli::parse();
     match cli.command {
+        Command::Init => commands::init::run(),
         Command::Ticket { action } => commands::ticket::run(action),
         Command::Review { action } => commands::review::run(action),
         Command::Sync { remote } => commands::sync::run(remote),

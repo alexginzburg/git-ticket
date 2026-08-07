@@ -55,7 +55,10 @@ pub fn run(action: TicketAction) {
     match action {
         TicketAction::New { title, assignee, body } => {
             match ticket_service::create_ticket(&repo, "main", &title, &body, assignee.as_deref(), &author, now_ts()) {
-                Ok(t) => print_ticket_line(&t),
+                Ok(t) => {
+                    print_ticket_line(&t);
+                    println!("Tip: add trailer 'Ticket-Id: {}' to commits on this branch", t.id);
+                }
                 Err(e) => print_error(e),
             }
         }

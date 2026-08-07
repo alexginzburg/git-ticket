@@ -2,4 +2,5 @@
 pub mod event;
 pub mod id;
 pub mod log;
+pub mod review;
 pub mod ticket;

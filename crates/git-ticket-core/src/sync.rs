@@ -15,12 +15,31 @@ const FETCH_REVIEWS_NOTES: &str = "refs/git-ticket-fetch/notes/reviews";
 const FETCH_TICKET_POINTERS: &str = "refs/git-ticket-fetch/tickets/*";
 const FETCH_REVIEW_POINTERS: &str = "refs/git-ticket-fetch/reviews/*";
 
+/// Maximum fetch->merge->push attempts before giving up, so a remote that
+/// keeps moving under us (or a genuinely broken push) can never spin forever.
+const MAX_SYNC_ATTEMPTS: usize = 5;
+
+/// All refspecs are forced (`+`).
+///
+/// Notes refs cannot be fast-forwarded across clones: `repo.note()` always
+/// builds the new notes commit with the *local* notes-ref tip as its sole
+/// parent, so after merging fetched content the local notes ref is not a
+/// descendant of the remote's. Content safety comes from the merge itself
+/// rather than from ref ancestry -- `log::merge_cat_sort_uniq` makes the
+/// pushed note content a superset union of both sides, so forcing the ref
+/// update cannot drop events. The push is still guarded by a re-fetch,
+/// re-merge and retry loop (see [`sync`]) to cover a concurrent syncer
+/// landing new content between our fetch and our push.
+///
+/// The fetch side must be forced for the same reason: once anyone can
+/// force-update the remote notes ref, a non-forced fetch of it would itself
+/// start failing non-fast-forward.
 fn fetch_refspecs() -> Vec<String> {
     vec![
-        format!("{TICKETS_NOTES_REF}:{FETCH_TICKETS_NOTES}"),
-        format!("{REVIEWS_NOTES_REF}:{FETCH_REVIEWS_NOTES}"),
-        format!("refs/git-ticket/tickets/*:{FETCH_TICKET_POINTERS}"),
-        format!("refs/git-ticket/reviews/*:{FETCH_REVIEW_POINTERS}"),
+        format!("+{TICKETS_NOTES_REF}:{FETCH_TICKETS_NOTES}"),
+        format!("+{REVIEWS_NOTES_REF}:{FETCH_REVIEWS_NOTES}"),
+        format!("+refs/git-ticket/tickets/*:{FETCH_TICKET_POINTERS}"),
+        format!("+refs/git-ticket/reviews/*:{FETCH_REVIEW_POINTERS}"),
     ]
 }
 
@@ -77,43 +96,100 @@ fn adopt_fetched_pointer_refs(repo: &Repository, kind: PointerKind, fetch_prefix
     Ok(())
 }
 
-pub fn sync(repo: &Repository, remote_name: &str) -> Result<SyncReport, git2::Error> {
-    let mut remote: Remote = repo.find_remote(remote_name)?;
-
-    let specs = fetch_refspecs();
-    let spec_refs: Vec<&str> = specs.iter().map(String::as_str).collect();
-    remote.fetch(&spec_refs, None, None)?;
-
-    adopt_fetched_pointer_refs(repo, PointerKind::Ticket, "refs/git-ticket-fetch/tickets/")?;
-    adopt_fetched_pointer_refs(repo, PointerKind::Review, "refs/git-ticket-fetch/reviews/")?;
-
-    let tickets_merged = merge_notes_ref(repo, TICKETS_NOTES_REF, FETCH_TICKETS_NOTES)?;
-    let reviews_merged = merge_notes_ref(repo, REVIEWS_NOTES_REF, FETCH_REVIEWS_NOTES)?;
-
-    let ticket_ids = list_pointer_ids(repo, PointerKind::Ticket);
-    let review_ids = list_pointer_ids(repo, PointerKind::Review);
-    let mut push_specs = vec![
-        format!("{TICKETS_NOTES_REF}:{TICKETS_NOTES_REF}"),
-        format!("{REVIEWS_NOTES_REF}:{REVIEWS_NOTES_REF}"),
+/// Forced push refspecs for every local notes ref and pointer ref.
+///
+/// Pointer refs are forced too: `adopt_fetched_pointer_refs` only ever
+/// *creates* a missing local pointer ref and never rewrites an existing one,
+/// and a pointer ref's target is written once at creation and never changes,
+/// so forcing here is a formality -- ids are unique by construction, so there
+/// is no value for the force to actually clobber.
+fn push_refspecs(repo: &Repository) -> Vec<String> {
+    let mut specs = vec![
+        format!("+{TICKETS_NOTES_REF}:{TICKETS_NOTES_REF}"),
+        format!("+{REVIEWS_NOTES_REF}:{REVIEWS_NOTES_REF}"),
     ];
-    for id in &ticket_ids {
-        push_specs.push(format!("refs/git-ticket/tickets/{id}:refs/git-ticket/tickets/{id}"));
+    for id in list_pointer_ids(repo, PointerKind::Ticket) {
+        specs.push(format!("+refs/git-ticket/tickets/{id}:refs/git-ticket/tickets/{id}"));
     }
-    for id in &review_ids {
-        push_specs.push(format!("refs/git-ticket/reviews/{id}:refs/git-ticket/reviews/{id}"));
+    for id in list_pointer_ids(repo, PointerKind::Review) {
+        specs.push(format!("+refs/git-ticket/reviews/{id}:refs/git-ticket/reviews/{id}"));
     }
     // Only push refspecs whose source ref actually exists locally -- a
     // repo that has never created a ticket/review has no notes ref yet,
     // and libgit2 rejects the whole push if any single refspec's source
     // is missing.
-    push_specs.retain(|spec| {
-        let src = spec.split(':').next().unwrap_or("");
+    specs.retain(|spec| {
+        let src = spec.trim_start_matches('+').split(':').next().unwrap_or("");
         repo.find_reference(src).is_ok()
     });
+    specs
+}
+
+/// A failed sync step, tagged with whether retrying could plausibly help.
+/// Only push failures are retryable: everything before the push is either
+/// local work or a fetch, and re-running those after they just failed will
+/// fail the same way.
+struct SyncStepError {
+    error: git2::Error,
+    retryable: bool,
+}
+
+/// One fetch -> adopt-pointers -> merge-notes -> push round trip. Merge
+/// counts are accumulated into `report` as they happen, so counts from an
+/// attempt whose push later fails are not lost (the merges themselves were
+/// still written locally).
+fn sync_once(repo: &Repository, remote_name: &str, report: &mut SyncReport) -> Result<(), SyncStepError> {
+    let fatal = |e: git2::Error| SyncStepError { error: e, retryable: false };
+
+    let mut remote: Remote = repo.find_remote(remote_name).map_err(fatal)?;
+
+    let specs = fetch_refspecs();
+    let spec_refs: Vec<&str> = specs.iter().map(String::as_str).collect();
+    remote.fetch(&spec_refs, None, None).map_err(fatal)?;
+
+    adopt_fetched_pointer_refs(repo, PointerKind::Ticket, "refs/git-ticket-fetch/tickets/").map_err(fatal)?;
+    adopt_fetched_pointer_refs(repo, PointerKind::Review, "refs/git-ticket-fetch/reviews/").map_err(fatal)?;
+
+    report.tickets_merged += merge_notes_ref(repo, TICKETS_NOTES_REF, FETCH_TICKETS_NOTES).map_err(fatal)?;
+    report.reviews_merged += merge_notes_ref(repo, REVIEWS_NOTES_REF, FETCH_REVIEWS_NOTES).map_err(fatal)?;
+
+    let push_specs = push_refspecs(repo);
     if !push_specs.is_empty() {
         let push_refs: Vec<&str> = push_specs.iter().map(String::as_str).collect();
-        remote.push(&push_refs, None)?;
+        remote
+            .push(&push_refs, None)
+            .map_err(|e| SyncStepError { error: e, retryable: true })?;
     }
 
-    Ok(SyncReport { tickets_merged, reviews_merged })
+    Ok(())
+}
+
+/// Fetch remote ticket/review state, merge it into the local notes, and push
+/// the merged result back.
+///
+/// The whole round trip is retried on push failure: a push can legitimately
+/// fail because another syncer landed new content on the remote between our
+/// fetch and our push. Re-running fetch+merge is safe because
+/// `log::merge_cat_sort_uniq` is idempotent -- re-merging already-merged
+/// content is a no-op -- so a retry simply folds in whatever arrived in the
+/// meantime and tries again. Bounded by [`MAX_SYNC_ATTEMPTS`].
+pub fn sync(repo: &Repository, remote_name: &str) -> Result<SyncReport, git2::Error> {
+    let mut report = SyncReport::default();
+    let mut last_err = None;
+
+    for _ in 0..MAX_SYNC_ATTEMPTS {
+        match sync_once(repo, remote_name, &mut report) {
+            Ok(()) => return Ok(report),
+            Err(SyncStepError { error, retryable: false }) => return Err(error),
+            Err(SyncStepError { error, retryable: true }) => last_err = Some(error),
+        }
+    }
+
+    let detail = last_err
+        .map(|e| e.message().to_string())
+        .unwrap_or_else(|| "unknown error".to_string());
+    Err(git2::Error::from_str(&format!(
+        "sync: push to remote '{remote_name}' still failing after {MAX_SYNC_ATTEMPTS} attempts \
+         (remote kept moving or push was rejected): {detail}"
+    )))
 }

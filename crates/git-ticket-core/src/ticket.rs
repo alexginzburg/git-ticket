@@ -23,7 +23,14 @@ pub struct TicketState {
 
 pub fn project_ticket(id: &str, events: &[TicketEvent]) -> Option<TicketState> {
     let mut relevant: Vec<&TicketEvent> = events.iter().filter(|e| e.id() == id).collect();
-    relevant.sort_by(|a, b| a.ts().cmp(&b.ts()).then_with(|| a.to_line().cmp(&b.to_line())));
+    // Stable sort by timestamp only: events with equal timestamps (common
+    // when several commands run within the same wall-clock second) keep
+    // their original relative order, which reflects the order they were
+    // appended to the note. Breaking ties by serialized content instead
+    // would reorder events arbitrarily (e.g. a later `TicketCreated`
+    // sorting after `StatusChanged`/`Assigned` purely by JSON text),
+    // silently resetting ticket state.
+    relevant.sort_by_key(|e| e.ts());
 
     let mut state: Option<TicketState> = None;
     for event in relevant {

@@ -2,7 +2,7 @@ use crate::event::{ReviewEvent, Verdict};
 use crate::id::{generate_id, resolve_prefix, PrefixError};
 use crate::repo::{
     append_note_line, ensure_merge_strategy, list_pointer_ids, merge_base, read_note,
-    resolve_pointer_ref, set_pointer_ref, PointerKind, REVIEWS_NOTES_REF,
+    resolve_base_branch, resolve_pointer_ref, set_pointer_ref, PointerKind, REVIEWS_NOTES_REF,
 };
 use crate::review::{project_review, ReviewState};
 use git2::{Oid, Repository};
@@ -61,15 +61,10 @@ pub fn start_review(
     ts: u64,
 ) -> Result<ReviewState, ReviewError> {
     let target_oid = resolve_commitish(repo, target)?;
-    let base_name = base
-        .map(String::from)
-        .or_else(|| {
-            repo.config()
-                .ok()
-                .and_then(|c| c.get_string("ticket.baseBranch").ok())
-        })
-        .unwrap_or_else(|| "main".to_string());
-    let base_oid = resolve_commitish(repo, &base_name)?;
+    let base_name = resolve_base_branch(repo, base);
+    // Resolved eagerly so opening a review against a non-existent base fails
+    // immediately rather than at display time.
+    let _base_oid = resolve_commitish(repo, &base_name)?;
 
     let id = generate_id();
     let event = ReviewEvent::ReviewOpened {
@@ -83,10 +78,32 @@ pub fn start_review(
     ensure_merge_strategy(repo, REVIEWS_NOTES_REF)?;
     append_note_line(repo, REVIEWS_NOTES_REF, target_oid, &event.to_line())?;
     set_pointer_ref(repo, PointerKind::Review, &id, target_oid)?;
-    let _ = merge_base; // merge_base is used by callers computing diffs (Task 11 web/CLI), kept imported for that purpose
-    let _ = base_oid; // base is resolved eagerly to validate it exists before opening the review
 
     load_review(repo, &id)
+}
+
+/// Resolve the `(base, target)` commit pair a review's diff must be computed
+/// over.
+///
+/// The target is taken from the review's pointer ref
+/// (`refs/git-ticket/reviews/<id>`), which was set to the commit the branch
+/// pointed at when the review was opened and is never rewritten -- so commits
+/// pushed to that branch *after* the review was opened do not silently leak
+/// into the diff. The base is the merge-base of that snapshotted target with
+/// the *current* tip of the review's base branch, matching the spec's "diff
+/// base for a branch review: merge-base of the branch with a configured base
+/// branch". Resolving the base branch by name (rather than snapshotting it)
+/// is intentional: it is a moving ref by design, and taking the merge-base
+/// keeps unrelated base-branch commits out of the diff.
+///
+/// Both the CLI `review show` and the web review detail page go through this
+/// so the two renderings can never diverge.
+pub fn review_diff_range(repo: &Repository, review: &ReviewState) -> Result<(Oid, Oid), ReviewError> {
+    let target_oid = resolve_pointer_ref(repo, PointerKind::Review, &review.id)
+        .ok_or(ReviewError::NotFound)?;
+    let base_tip = resolve_commitish(repo, &review.base)?;
+    let base_oid = merge_base(repo, target_oid, base_tip).unwrap_or(base_tip);
+    Ok((base_oid, target_oid))
 }
 
 pub fn add_comment(

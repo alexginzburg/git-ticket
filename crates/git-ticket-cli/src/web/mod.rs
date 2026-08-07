@@ -6,7 +6,7 @@ use axum::routing::get;
 use axum::Router;
 use git_ticket_core::diff::{compute_diff, DiffLineKind};
 use git_ticket_core::event::TicketStatus;
-use git_ticket_core::review_service::show_review;
+use git_ticket_core::review_service::{review_diff_range, show_review};
 use git_ticket_core::ticket_service::{list_tickets, show_ticket};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -124,12 +124,11 @@ async fn review_detail(State(state): State<AppState>, Path(id): Path<String>) ->
         Err(_) => return (StatusCode::NOT_FOUND, "review not found").into_response(),
     };
 
-    let files = match (
-        repo.revparse_single(&review.base).map(|o| o.id()),
-        repo.revparse_single(&review.target).map(|o| o.id()),
-    ) {
-        (Ok(base), Ok(target)) => compute_diff(&repo, base, target).unwrap_or_default(),
-        _ => Vec::new(),
+    // Shared with the CLI's `review show` so both render the same range:
+    // the snapshotted target commit vs its merge-base with the base branch.
+    let files = match review_diff_range(&repo, &review) {
+        Ok((base, target)) => compute_diff(&repo, base, target).unwrap_or_default(),
+        Err(_) => Vec::new(),
     };
 
     let rendered_files = files

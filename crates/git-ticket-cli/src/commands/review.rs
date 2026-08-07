@@ -81,10 +81,7 @@ pub fn run(action: ReviewAction) {
         ReviewAction::Show { review_id } => match review_service::show_review(&repo, &review_id) {
             Ok(r) => {
                 print_summary(&r);
-                if let (Ok(base_oid), Ok(target_oid)) = (
-                    repo.revparse_single(&r.base).map(|o| o.id()),
-                    repo.revparse_single(&r.target).map(|o| o.id()),
-                ) {
+                if let Ok((base_oid, target_oid)) = review_service::review_diff_range(&repo, &r) {
                     if let Ok(files) = compute_diff(&repo, base_oid, target_oid) {
                         for f in files {
                             println!("--- {}", f.path);

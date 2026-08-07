@@ -18,11 +18,11 @@ fn new_then_list_then_show() {
     init_repo(dir.path());
 
     let mut new_cmd = Command::cargo_bin("git-ticket").unwrap();
-    new_cmd.current_dir(dir.path()).args(["ticket", "new", "Fix login", "-b", "details"]);
+    new_cmd.current_dir(dir.path()).args(["new", "Fix login", "-b", "details"]);
     new_cmd.assert().success().stdout(contains("Fix login"));
 
     let mut list_cmd = Command::cargo_bin("git-ticket").unwrap();
-    list_cmd.current_dir(dir.path()).args(["ticket", "list"]);
+    list_cmd.current_dir(dir.path()).args(["list"]);
     list_cmd.assert().success().stdout(contains("Fix login")).stdout(contains("open"));
 }
 
@@ -32,20 +32,20 @@ fn status_and_assign_update_the_ticket() {
     init_repo(dir.path());
 
     let output = Command::cargo_bin("git-ticket").unwrap()
-        .current_dir(dir.path()).args(["ticket", "new", "Fix login"])
+        .current_dir(dir.path()).args(["new", "Fix login"])
         .output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     let id = stdout.lines().next().unwrap().split_whitespace().next().unwrap();
 
     Command::cargo_bin("git-ticket").unwrap()
-        .current_dir(dir.path()).args(["ticket", "status", id, "in-progress"])
+        .current_dir(dir.path()).args(["status", id, "in-progress"])
         .assert().success();
 
     Command::cargo_bin("git-ticket").unwrap()
-        .current_dir(dir.path()).args(["ticket", "assign", id, "bob"])
+        .current_dir(dir.path()).args(["assign", id, "bob"])
         .assert().success();
 
     Command::cargo_bin("git-ticket").unwrap()
-        .current_dir(dir.path()).args(["ticket", "show", id])
+        .current_dir(dir.path()).args(["show", id])
         .assert().success().stdout(contains("in-progress")).stdout(contains("bob"));
 }

@@ -33,6 +33,6 @@ fn ticket_new_prints_a_trailer_suggestion() {
     StdCommand::new("git").args(["checkout", "-b", "fix/login"]).current_dir(dir.path()).status().unwrap();
 
     Command::cargo_bin("git-ticket").unwrap()
-        .current_dir(dir.path()).args(["ticket", "new", "Fix login"])
+        .current_dir(dir.path()).args(["new", "Fix login"])
         .assert().success().stdout(contains("Ticket-Id:"));
 }

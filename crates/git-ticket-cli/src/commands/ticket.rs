@@ -54,7 +54,10 @@ pub fn run(action: TicketAction) {
 
     match action {
         TicketAction::New { title, assignee, body } => {
-            match ticket_service::create_ticket(&repo, "main", &title, &body, assignee.as_deref(), &author, now_ts()) {
+            // `None` => resolved by git-ticket-core from `ticket.baseBranch`
+            // config, falling back to "main" -- the same policy review
+            // creation uses.
+            match ticket_service::create_ticket(&repo, None, &title, &body, assignee.as_deref(), &author, now_ts()) {
                 Ok(t) => {
                     print_ticket_line(&t);
                     println!("Tip: add trailer 'Ticket-Id: {}' to commits on this branch", t.id);

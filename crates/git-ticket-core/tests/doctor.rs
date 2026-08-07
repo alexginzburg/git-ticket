@@ -63,7 +63,7 @@ fn init_repo_with_diverged_branch() -> (tempfile::TempDir, Repository) {
 #[test]
 fn finds_no_orphans_for_a_healthy_ticket() {
     let (_dir, repo) = init_repo_with_branch("fix/x");
-    create_ticket(&repo, "main", "T", "d", None, "alex", 1).unwrap();
+    create_ticket(&repo, Some("main"), "T", "d", None, "alex", 1).unwrap();
     assert!(find_orphaned_pointers(&repo).is_empty());
 }
 

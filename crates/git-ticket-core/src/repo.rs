@@ -95,3 +95,22 @@ pub fn list_pointer_ids(repo: &Repository, kind: PointerKind) -> Vec<String> {
 pub fn merge_base(repo: &Repository, a: Oid, b: Oid) -> Result<Oid, Error> {
     repo.merge_base(a, b)
 }
+
+/// Default base branch used when none is given explicitly.
+pub const DEFAULT_BASE_BRANCH: &str = "main";
+
+/// Single source of truth for "which branch is *the* base branch here".
+///
+/// Precedence: explicit argument > `ticket.baseBranch` git config >
+/// [`DEFAULT_BASE_BRANCH`]. Both ticket creation and review creation resolve
+/// their base branch through this so the two paths cannot drift apart.
+pub fn resolve_base_branch(repo: &Repository, explicit: Option<&str>) -> String {
+    if let Some(name) = explicit {
+        return name.to_string();
+    }
+    repo.config()
+        .ok()
+        .and_then(|c| c.get_string("ticket.baseBranch").ok())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_BASE_BRANCH.to_string())
+}

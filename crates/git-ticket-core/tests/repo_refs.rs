@@ -1,6 +1,7 @@
 use git2::Repository;
 use git_ticket_core::repo::{
-    list_pointer_ids, merge_base, resolve_pointer_ref, set_pointer_ref, PointerKind,
+    list_pointer_ids, merge_base, resolve_base_branch, resolve_pointer_ref, set_pointer_ref,
+    PointerKind,
 };
 
 fn commit(repo: &Repository, msg: &str, parents: &[&git2::Commit]) -> git2::Oid {
@@ -23,6 +24,21 @@ fn pointer_ref_roundtrips_and_lists() {
     let ids = list_pointer_ids(&repo, PointerKind::Ticket);
     assert_eq!(ids, vec!["abc123".to_string()]);
     assert!(list_pointer_ids(&repo, PointerKind::Review).is_empty());
+}
+
+/// Ticket creation and review creation must agree on what "the base branch"
+/// means -- ticket creation used to hardcode "main" and ignore the config.
+#[test]
+fn base_branch_resolution_prefers_explicit_then_config_then_main() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = Repository::init(dir.path()).unwrap();
+
+    assert_eq!(resolve_base_branch(&repo, None), "main");
+    assert_eq!(resolve_base_branch(&repo, Some("release")), "release");
+
+    repo.config().unwrap().set_str("ticket.baseBranch", "trunk").unwrap();
+    assert_eq!(resolve_base_branch(&repo, None), "trunk");
+    assert_eq!(resolve_base_branch(&repo, Some("release")), "release");
 }
 
 #[test]

@@ -46,7 +46,7 @@ fn two_clones_converge_after_sync() {
     // namespace but not the same branch tip — that's fine for this test,
     // which only exercises the notes/pointer-ref sync path independently
     // per clone against a shared remote.
-    create_ticket(&repo_a, "main", "From A", "d", None, "alex", 100).unwrap();
+    create_ticket(&repo_a, Some("main"), "From A", "d", None, "alex", 100).unwrap();
     sync(&repo_a, "origin").unwrap();
 
     sync(&repo_b, "origin").unwrap();
@@ -55,7 +55,7 @@ fn two_clones_converge_after_sync() {
     assert_eq!(tickets_in_b[0].title, "From A");
 
     // Round-trip: B creates its own ticket, syncs, A syncs and sees both.
-    create_ticket(&repo_b, "main", "From B", "d", None, "bob", 101).unwrap();
+    create_ticket(&repo_b, Some("main"), "From B", "d", None, "bob", 101).unwrap();
     sync(&repo_b, "origin").unwrap();
     sync(&repo_a, "origin").unwrap();
     let tickets_in_a = list_tickets(&repo_a).unwrap();

@@ -2,7 +2,7 @@ use crate::event::{TicketEvent, TicketStatus};
 use crate::id::{generate_id, resolve_prefix, PrefixError};
 use crate::repo::{
     append_note_line, ensure_merge_strategy, list_pointer_ids, merge_base, read_note,
-    resolve_pointer_ref, set_pointer_ref, PointerKind, TICKETS_NOTES_REF,
+    resolve_base_branch, resolve_pointer_ref, set_pointer_ref, PointerKind, TICKETS_NOTES_REF,
 };
 use crate::ticket::{project_ticket, TicketState};
 use git2::{Oid, Repository};
@@ -49,7 +49,7 @@ fn append_event(repo: &Repository, id: &str, event: &TicketEvent) -> Result<(), 
 
 pub fn create_ticket(
     repo: &Repository,
-    base_branch: &str,
+    base_branch: Option<&str>,
     title: &str,
     body: &str,
     assignee: Option<&str>,
@@ -59,9 +59,10 @@ pub fn create_ticket(
     let head = repo.head()?;
     let branch = head.shorthand().ok_or(TicketError::DetachedHead)?.to_string();
     let tip = head.peel_to_commit()?.id();
+    let base_branch = resolve_base_branch(repo, base_branch);
 
     let root = match repo
-        .find_branch(base_branch, git2::BranchType::Local)
+        .find_branch(&base_branch, git2::BranchType::Local)
         .ok()
         .and_then(|b| b.get().target())
     {

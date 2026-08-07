@@ -1,3 +1,13 @@
+mod cli;
+mod commands;
+mod git_env;
+
+use clap::Parser;
+use cli::{Cli, Command};
+
 fn main() {
-    println!("git-ticket: not yet implemented");
+    let cli = Cli::parse();
+    match cli.command {
+        Command::Ticket { action } => commands::ticket::run(action),
+    }
 }

@@ -20,6 +20,10 @@ pub enum Command {
     Sync {
         remote: Option<String>,
     },
+    Doctor {
+        #[arg(long)]
+        prune: bool,
+    },
 }
 
 #[derive(Subcommand)]

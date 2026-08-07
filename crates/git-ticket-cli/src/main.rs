@@ -11,5 +11,6 @@ fn main() {
         Command::Ticket { action } => commands::ticket::run(action),
         Command::Review { action } => commands::review::run(action),
         Command::Sync { remote } => commands::sync::run(remote),
+        Command::Doctor { prune } => commands::doctor::run(prune),
     }
 }

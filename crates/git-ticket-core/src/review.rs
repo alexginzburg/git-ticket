@@ -28,9 +28,28 @@ impl ReviewState {
     }
 }
 
+/// Tie-break priority for events sharing a timestamp: `ReviewOpened` must
+/// always be applied first, since it establishes the base state that every
+/// other event mutates. Everything else is equal priority.
+fn event_priority(e: &ReviewEvent) -> u8 {
+    matches!(e, ReviewEvent::ReviewOpened { .. }).then_some(0).unwrap_or(1)
+}
+
 pub fn project_review(id: &str, events: &[ReviewEvent]) -> Option<ReviewState> {
     let mut relevant: Vec<&ReviewEvent> = events.iter().filter(|e| e.id() == id).collect();
-    relevant.sort_by(|a, b| a.ts().cmp(&b.ts()).then_with(|| a.to_line().cmp(&b.to_line())));
+    // Sort purely by each event's own content, never by input array order:
+    // after a cross-clone sync, `log::merge_cat_sort_uniq` resorts an entire
+    // note's lines into lexicographic string order, so "input order" can no
+    // longer be relied on to reflect chronological append order. Primary key
+    // is timestamp; secondary key ensures `ReviewOpened` always applies
+    // before any other same-timestamp event; tertiary key is a deterministic
+    // lexicographic tie-break for same-timestamp, same-priority events.
+    relevant.sort_by(|a, b| {
+        a.ts()
+            .cmp(&b.ts())
+            .then_with(|| event_priority(a).cmp(&event_priority(b)))
+            .then_with(|| a.to_line().cmp(&b.to_line()))
+    });
 
     let mut state: Option<ReviewState> = None;
     for event in relevant {
@@ -91,6 +110,24 @@ mod tests {
         assert_eq!(state.base, "main");
         assert!(state.comments.is_empty());
         assert!(state.latest_verdict().is_none());
+    }
+
+    #[test]
+    fn same_timestamp_opened_and_verdict_still_apply_opened_first() {
+        // Simulates the state of a note's lines after `log::merge_cat_sort_uniq`
+        // resorts them lexicographically on cross-clone sync: a `VerdictSet`
+        // line can land before a same-timestamp `ReviewOpened` line purely
+        // because "VerdictSet" < "ReviewOpened" is not guaranteed by any
+        // chronological ordering.
+        let events = vec![
+            ReviewEvent::VerdictSet { id: "r1".into(), verdict: Verdict::Approve, author: "alex".into(), ts: 5 },
+            opened("r1", 5),
+        ];
+        let state = project_review("r1", &events).unwrap();
+        let (author, verdict, ts) = state.latest_verdict().unwrap();
+        assert_eq!(author, "alex");
+        assert_eq!(*verdict, Verdict::Approve);
+        assert_eq!(*ts, 5);
     }
 
     #[test]

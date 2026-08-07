@@ -21,16 +21,29 @@ pub struct TicketState {
     pub comments: Vec<Comment>,
 }
 
+/// Tie-break priority for events sharing a timestamp: `TicketCreated` must
+/// always be applied first, since it establishes the base state that every
+/// other event mutates. Everything else is equal priority.
+fn event_priority(e: &TicketEvent) -> u8 {
+    matches!(e, TicketEvent::TicketCreated { .. }).then_some(0).unwrap_or(1)
+}
+
 pub fn project_ticket(id: &str, events: &[TicketEvent]) -> Option<TicketState> {
     let mut relevant: Vec<&TicketEvent> = events.iter().filter(|e| e.id() == id).collect();
-    // Stable sort by timestamp only: events with equal timestamps (common
-    // when several commands run within the same wall-clock second) keep
-    // their original relative order, which reflects the order they were
-    // appended to the note. Breaking ties by serialized content instead
-    // would reorder events arbitrarily (e.g. a later `TicketCreated`
-    // sorting after `StatusChanged`/`Assigned` purely by JSON text),
-    // silently resetting ticket state.
-    relevant.sort_by_key(|e| e.ts());
+    // Sort purely by each event's own content, never by input array order:
+    // after a cross-clone sync, `log::merge_cat_sort_uniq` resorts an entire
+    // note's lines into lexicographic string order, so "input order" can no
+    // longer be relied on to reflect chronological append order. Primary key
+    // is timestamp; secondary key ensures `TicketCreated` always applies
+    // before any other same-timestamp event (it establishes the base state
+    // everything else applies on top of); tertiary key is a deterministic
+    // lexicographic tie-break for same-timestamp, same-priority events.
+    relevant.sort_by(|a, b| {
+        a.ts()
+            .cmp(&b.ts())
+            .then_with(|| event_priority(a).cmp(&event_priority(b)))
+            .then_with(|| a.to_line().cmp(&b.to_line()))
+    });
 
     let mut state: Option<TicketState> = None;
     for event in relevant {
@@ -121,6 +134,20 @@ mod tests {
             TicketEvent::StatusChanged { id: "a".into(), status: TicketStatus::Closed, ts: 3 },
             created("a", 1),
             TicketEvent::StatusChanged { id: "a".into(), status: TicketStatus::InProgress, ts: 2 },
+        ];
+        let state = project_ticket("a", &events).unwrap();
+        assert_eq!(state.status, TicketStatus::Closed);
+    }
+
+    #[test]
+    fn same_timestamp_created_and_status_changed_still_apply_created_first() {
+        // Simulates the state of a note's lines after `log::merge_cat_sort_uniq`
+        // resorts them lexicographically on cross-clone sync: a `StatusChanged`
+        // line can land before a same-timestamp `TicketCreated` line purely
+        // because "StatusChanged" < "TicketCreated" lexicographically.
+        let events = vec![
+            TicketEvent::StatusChanged { id: "a".into(), status: TicketStatus::Closed, ts: 5 },
+            created("a", 5),
         ];
         let state = project_ticket("a", &events).unwrap();
         assert_eq!(state.status, TicketStatus::Closed);

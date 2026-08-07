@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+<head><title>Review {{ review_id }}</title></head>
+<body>
+  <h1>Review {{ review_id }}</h1>
+  <p>{{ target }} vs {{ base }} — {{ verdict }}</p>
+  {% for f in files %}
+  <h3>{{ f.path }}</h3>
+  <pre>{% for l in f.lines %}{{ l.marker }}{{ l.content }}
+{% endfor %}</pre>
+  {% endfor %}
+  <h2>Comments</h2>
+  <ul>
+    {% for c in comments %}
+    <li>{{ c }}</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<head><title>{{ title }}</title></head>
+<body>
+  <h1>{{ title }}</h1>
+  <p>Status: {{ status }} | Branch: {{ branch }} | Assignee: {{ assignee }}</p>
+  <p>{{ body }}</p>
+  <h2>Comments</h2>
+  <ul>
+    {% for c in comments %}
+    <li>{{ c.author }}: {{ c.body }}</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

@@ -24,6 +24,10 @@ pub enum Command {
         #[arg(long)]
         prune: bool,
     },
+    Web {
+        #[arg(long)]
+        port: Option<u16>,
+    },
 }
 
 #[derive(Subcommand)]

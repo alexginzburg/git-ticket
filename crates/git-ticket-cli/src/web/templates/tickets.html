@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+<head><title>git-ticket</title></head>
+<body>
+  <h1>Tickets</h1>
+  <ul>
+    {% for t in tickets %}
+    <li><a href="/tickets/{{ t.id }}">{{ t.title }}</a> [{{ t.status }}] ({{ t.branch }})</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

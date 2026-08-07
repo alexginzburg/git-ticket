@@ -17,6 +17,9 @@ pub enum Command {
         #[command(subcommand)]
         action: ReviewAction,
     },
+    Sync {
+        remote: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

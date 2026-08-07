@@ -6,5 +6,6 @@ pub mod log;
 pub mod repo;
 pub mod review;
 pub mod review_service;
+pub mod sync;
 pub mod ticket;
 pub mod ticket_service;

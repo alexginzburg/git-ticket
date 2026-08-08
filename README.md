@@ -1,5 +1,7 @@
 # git-ticket
 
+[![Rust](https://github.com/alexginzburg/ticket/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/alexginzburg/ticket/actions/workflows/rust.yml)
+
 A ticketing and code-review tool that lives entirely inside git. Ticket bodies and review comments are stored as git notes/refs — no server, no database, no SaaS account. They travel with the code over ordinary `git push`/`fetch`/`clone`, and every command except `sync` works fully offline.
 
 See [`docs/superpowers/specs/2026-08-06-git-ticket-design.md`](docs/superpowers/specs/2026-08-06-git-ticket-design.md) for the full design rationale.

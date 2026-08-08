@@ -99,9 +99,13 @@ pub fn run(action: TicketAction) {
                     if let Some(b) = &branch {
                         tickets.retain(|t| &t.branch == b);
                     }
-                    if let Some(s) = &status {
-                        if let Ok(want) = parse_status(s) {
-                            tickets.retain(|t| t.status == want);
+                    if status != "all" {
+                        match parse_status(&status) {
+                            Ok(want) => tickets.retain(|t| t.status == want),
+                            Err(msg) => {
+                                eprintln!("error: {msg}");
+                                std::process::exit(1);
+                            }
                         }
                     }
                     if let Some(a) = &assignee {

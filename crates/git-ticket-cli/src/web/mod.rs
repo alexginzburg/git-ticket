@@ -1,5 +1,5 @@
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -8,6 +8,7 @@ use git_ticket_core::diff::{compute_diff, DiffLineKind};
 use git_ticket_core::event::{TicketStatus, TicketType};
 use git_ticket_core::review_service::{review_diff_range, show_review};
 use git_ticket_core::ticket_service::{list_tickets, show_ticket};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -37,6 +38,15 @@ fn type_str(ticket_type: &TicketType) -> &'static str {
     }
 }
 
+fn parse_status(s: &str) -> Option<TicketStatus> {
+    match s {
+        "open" => Some(TicketStatus::Open),
+        "in-progress" => Some(TicketStatus::InProgress),
+        "closed" => Some(TicketStatus::Closed),
+        _ => None,
+    }
+}
+
 struct TicketRow {
     id: String,
     title: String,
@@ -51,10 +61,23 @@ struct TicketsTemplate {
     tickets: Vec<TicketRow>,
 }
 
-async fn tickets_index(State(state): State<AppState>) -> Response {
+async fn tickets_index(State(state): State<AppState>, Query(params): Query<HashMap<String, String>>) -> Response {
+    let status_filter = params.get("status").map(String::as_str).unwrap_or("open");
+    let want = if status_filter == "all" {
+        None
+    } else {
+        match parse_status(status_filter) {
+            Some(s) => Some(s),
+            None => return (StatusCode::BAD_REQUEST, "invalid status filter").into_response(),
+        }
+    };
+
     let repo = open(&state);
     match list_tickets(&repo) {
-        Ok(tickets) => {
+        Ok(mut tickets) => {
+            if let Some(want) = &want {
+                tickets.retain(|t| &t.status == want);
+            }
             let tickets = tickets
                 .into_iter()
                 .map(|t| TicketRow {

@@ -34,8 +34,8 @@ pub enum Command {
     List {
         #[arg(long)]
         branch: Option<String>,
-        #[arg(long)]
-        status: Option<String>,
+        #[arg(long, default_value = "open")]
+        status: String,
         #[arg(long)]
         assignee: Option<String>,
         #[arg(long = "type")]
@@ -91,8 +91,8 @@ pub enum TicketAction {
     List {
         #[arg(long)]
         branch: Option<String>,
-        #[arg(long)]
-        status: Option<String>,
+        #[arg(long, default_value = "open")]
+        status: String,
         #[arg(long)]
         assignee: Option<String>,
         #[arg(long = "type")]

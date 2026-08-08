@@ -1,5 +1,5 @@
 use askama::Template;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path as AxumPath, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -9,16 +9,31 @@ use git_ticket_core::event::{TicketStatus, TicketType};
 use git_ticket_core::review_service::{review_diff_range, show_review};
 use git_ticket_core::ticket_service::{list_tickets, show_ticket};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Clone)]
 struct AppState {
     repo_path: Arc<PathBuf>,
+    repo_name: String,
 }
 
 fn open(state: &AppState) -> git2::Repository {
     git2::Repository::open(state.repo_path.as_path()).expect("repo path is valid")
+}
+
+/// Derives a display/URL-safe repo name from the path passed to
+/// `build_router`, which is either a repo's `.git` dir (from the real CLI,
+/// which passes `repo.path()`) or a repo's working dir (from tests) -- both
+/// forms occur today, so this handles both by looking past a trailing
+/// `.git` component to its parent.
+pub fn repo_name(repo_path: &Path) -> String {
+    let name_component = if repo_path.file_name() == Some(std::ffi::OsStr::new(".git")) {
+        repo_path.parent().and_then(Path::file_name)
+    } else {
+        repo_path.file_name()
+    };
+    name_component.map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "repo".to_string())
 }
 
 fn status_str(status: &TicketStatus) -> &'static str {
@@ -59,6 +74,7 @@ struct TicketRow {
 #[template(path = "tickets.html")]
 struct TicketsTemplate {
     tickets: Vec<TicketRow>,
+    repo_name: String,
 }
 
 async fn tickets_index(State(state): State<AppState>, Query(params): Query<HashMap<String, String>>) -> Response {
@@ -88,7 +104,7 @@ async fn tickets_index(State(state): State<AppState>, Query(params): Query<HashM
                     branch: t.branch,
                 })
                 .collect();
-            TicketsTemplate { tickets }.into_response()
+            TicketsTemplate { tickets, repo_name: state.repo_name.clone() }.into_response()
         }
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "failed to list tickets").into_response(),
     }
@@ -111,7 +127,7 @@ struct TicketDetailTemplate {
     comments: Vec<CommentRow>,
 }
 
-async fn ticket_detail(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+async fn ticket_detail(State(state): State<AppState>, AxumPath(id): AxumPath<String>) -> Response {
     let repo = open(&state);
     match show_ticket(&repo, &id) {
         Ok(ticket) => TicketDetailTemplate {
@@ -153,7 +169,7 @@ struct ReviewDetailTemplate {
     verdict: String,
 }
 
-async fn review_detail(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+async fn review_detail(State(state): State<AppState>, AxumPath(id): AxumPath<String>) -> Response {
     let repo = open(&state);
     let review = match show_review(&repo, &id) {
         Ok(r) => r,
@@ -210,10 +226,11 @@ async fn review_detail(State(state): State<AppState>, Path(id): Path<String>) ->
 }
 
 pub fn build_router(repo_path: PathBuf) -> Router {
-    let state = AppState { repo_path: Arc::new(repo_path) };
-    Router::new()
+    let name = repo_name(&repo_path);
+    let state = AppState { repo_path: Arc::new(repo_path), repo_name: name.clone() };
+    let routes = Router::new()
         .route("/", get(tickets_index))
         .route("/tickets/:id", get(ticket_detail))
-        .route("/reviews/:id", get(review_detail))
-        .with_state(state)
+        .route("/reviews/:id", get(review_detail));
+    Router::new().nest(&format!("/{name}"), routes).with_state(state)
 }

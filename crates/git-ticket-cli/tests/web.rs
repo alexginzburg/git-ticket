@@ -1,4 +1,4 @@
-use git_ticket_cli::web::build_router;
+use git_ticket_cli::web::{build_router, repo_name};
 use git_ticket_core::event::{TicketStatus, TicketType};
 use axum::body::Body;
 use axum::http::Request;
@@ -39,9 +39,10 @@ async fn get(app: axum::Router, uri: &str) -> axum::response::Response {
 async fn ticket_list_page_shows_created_ticket() {
     let dir = tempfile::tempdir().unwrap();
     init_repo_with_ticket(dir.path());
+    let name = repo_name(dir.path());
 
     let app = build_router(dir.path().to_path_buf());
-    let response = get(app, "/").await;
+    let response = get(app, &format!("/{name}")).await;
 
     assert_eq!(response.status(), axum::http::StatusCode::OK);
     let html = body_string(response).await;
@@ -49,9 +50,22 @@ async fn ticket_list_page_shows_created_ticket() {
 }
 
 #[tokio::test]
+async fn ticket_list_page_links_stay_under_the_repo_prefix() {
+    let dir = tempfile::tempdir().unwrap();
+    init_repo_with_ticket(dir.path());
+    let name = repo_name(dir.path());
+
+    let app = build_router(dir.path().to_path_buf());
+    let html = body_string(get(app, &format!("/{name}")).await).await;
+
+    assert!(html.contains(&format!("/{name}/tickets/")));
+}
+
+#[tokio::test]
 async fn ticket_list_page_defaults_to_open_status_only() {
     let dir = tempfile::tempdir().unwrap();
     let repo = init_repo(dir.path());
+    let name = repo_name(dir.path());
     let open = git_ticket_core::ticket_service::create_ticket(
         &repo, Some("main"), "Stays open", "d", None, TicketType::Task, "alex", 1,
     )
@@ -62,18 +76,20 @@ async fn ticket_list_page_defaults_to_open_status_only() {
     .unwrap();
     git_ticket_core::ticket_service::set_status(&repo, &closed.id, TicketStatus::Closed, 3).unwrap();
 
-    let default_html = body_string(get(build_router(dir.path().to_path_buf()), "/").await).await;
+    let default_html = body_string(get(build_router(dir.path().to_path_buf()), &format!("/{name}")).await).await;
     assert!(default_html.contains(&open.title));
     assert!(!default_html.contains(&closed.title));
 
-    let all_html = body_string(get(build_router(dir.path().to_path_buf()), "/?status=all").await).await;
+    let all_html =
+        body_string(get(build_router(dir.path().to_path_buf()), &format!("/{name}?status=all")).await).await;
     assert!(all_html.contains(&open.title));
     assert!(all_html.contains(&closed.title));
 
-    let closed_html = body_string(get(build_router(dir.path().to_path_buf()), "/?status=closed").await).await;
+    let closed_html =
+        body_string(get(build_router(dir.path().to_path_buf()), &format!("/{name}?status=closed")).await).await;
     assert!(!closed_html.contains(&open.title));
     assert!(closed_html.contains(&closed.title));
 
-    let bad_response = get(build_router(dir.path().to_path_buf()), "/?status=bogus").await;
+    let bad_response = get(build_router(dir.path().to_path_buf()), &format!("/{name}?status=bogus")).await;
     assert_eq!(bad_response.status(), axum::http::StatusCode::BAD_REQUEST);
 }

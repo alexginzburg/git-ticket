@@ -59,3 +59,7 @@ Everyone on the team needs `git-ticket` installed locally (same `cargo install` 
 ## Development
 
 See [`CLAUDE.md`](CLAUDE.md) for build/test commands and architecture notes.
+
+## License
+
+Apache-2.0 — see [`LICENSE`](LICENSE).

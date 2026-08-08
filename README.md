@@ -20,9 +20,11 @@ This installs a `git-ticket` binary on your `PATH`. Because git treats any `git-
 git checkout -b fix/login
 git ticket new "Fix login bug" -b "Users can't log in on Safari" --type bug
 git ticket list                      # defaults to open tickets; --status all shows everything
+git ticket show <id>                 # body + comments
 git ticket status <id> in-progress
 git ticket type <id> feature
 git ticket assign <id> alex
+git ticket comment <id> "still reproduces on latest main"
 
 git ticket review start fix/login --base main
 git ticket review comment <review-id> --file src/auth.rs --line 42 "why is this needed?"

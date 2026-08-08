@@ -3,7 +3,7 @@ use predicates::str::contains;
 use std::process::Command as StdCommand;
 
 fn init_repo(dir: &std::path::Path) {
-    StdCommand::new("git").args(["init"]).current_dir(dir).status().unwrap();
+    StdCommand::new("git").args(["init", "-b", "main"]).current_dir(dir).status().unwrap();
     StdCommand::new("git").args(["config", "user.email", "test@example.com"]).current_dir(dir).status().unwrap();
     StdCommand::new("git").args(["config", "user.name", "Test User"]).current_dir(dir).status().unwrap();
     std::fs::write(dir.join("README.md"), "hello").unwrap();

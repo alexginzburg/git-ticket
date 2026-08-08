@@ -8,13 +8,12 @@ fn run(dir: &std::path::Path, args: &[&str]) {
 }
 
 fn init_repo_with_feature_branch(dir: &std::path::Path) {
-    run(dir, &["init"]);
+    run(dir, &["init", "-b", "main"]);
     run(dir, &["config", "user.email", "test@example.com"]);
     run(dir, &["config", "user.name", "Test User"]);
     std::fs::write(dir.join("a.txt"), "line1\n").unwrap();
     run(dir, &["add", "."]);
     run(dir, &["commit", "-m", "base"]);
-    run(dir, &["branch", "-M", "main"]);
     run(dir, &["checkout", "-b", "feature"]);
     std::fs::write(dir.join("a.txt"), "line1\nline2\n").unwrap();
     run(dir, &["add", "."]);

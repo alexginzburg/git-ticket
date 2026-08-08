@@ -2,7 +2,7 @@ use crate::repo::{
     list_pointer_ids, merge_note, read_note, resolve_pointer_ref, set_pointer_ref, PointerKind,
     REVIEWS_NOTES_REF, TICKETS_NOTES_REF,
 };
-use git2::{Oid, Remote, Repository};
+use git2::{Cred, CredentialType, FetchOptions, Oid, PushOptions, Remote, RemoteCallbacks, Repository};
 
 #[derive(Debug, Default)]
 pub struct SyncReport {
@@ -125,6 +125,43 @@ fn push_refspecs(repo: &Repository) -> Vec<String> {
     specs
 }
 
+/// Resolves credentials the same way the `git` CLI would: an SSH agent for
+/// SSH remotes, the configured credential helper for HTTPS remotes, then
+/// libgit2's own default provider. Without this, fetch/push against any
+/// remote that actually requires authentication fails immediately with
+/// "authentication required but no callback set" -- libgit2 never prompts
+/// or falls back to the system's credentials on its own.
+fn credentials_callback(
+    url: &str,
+    username_from_url: Option<&str>,
+    allowed_types: CredentialType,
+) -> Result<Cred, git2::Error> {
+    if allowed_types.contains(CredentialType::SSH_KEY) {
+        if let Some(username) = username_from_url {
+            if let Ok(cred) = Cred::ssh_key_from_agent(username) {
+                return Ok(cred);
+            }
+        }
+    }
+    if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
+        if let Ok(config) = git2::Config::open_default() {
+            if let Ok(cred) = Cred::credential_helper(&config, url, username_from_url) {
+                return Ok(cred);
+            }
+        }
+    }
+    if allowed_types.contains(CredentialType::DEFAULT) {
+        return Cred::default();
+    }
+    Err(git2::Error::from_str("no valid authentication method available for this remote"))
+}
+
+fn remote_callbacks() -> RemoteCallbacks<'static> {
+    let mut callbacks = RemoteCallbacks::new();
+    callbacks.credentials(credentials_callback);
+    callbacks
+}
+
 /// A failed sync step, tagged with whether retrying could plausibly help.
 /// Only push failures are retryable: everything before the push is either
 /// local work or a fetch, and re-running those after they just failed will
@@ -145,7 +182,9 @@ fn sync_once(repo: &Repository, remote_name: &str, report: &mut SyncReport) -> R
 
     let specs = fetch_refspecs();
     let spec_refs: Vec<&str> = specs.iter().map(String::as_str).collect();
-    remote.fetch(&spec_refs, None, None).map_err(fatal)?;
+    let mut fetch_options = FetchOptions::new();
+    fetch_options.remote_callbacks(remote_callbacks());
+    remote.fetch(&spec_refs, Some(&mut fetch_options), None).map_err(fatal)?;
 
     adopt_fetched_pointer_refs(repo, PointerKind::Ticket, "refs/git-ticket-fetch/tickets/").map_err(fatal)?;
     adopt_fetched_pointer_refs(repo, PointerKind::Review, "refs/git-ticket-fetch/reviews/").map_err(fatal)?;
@@ -156,8 +195,10 @@ fn sync_once(repo: &Repository, remote_name: &str, report: &mut SyncReport) -> R
     let push_specs = push_refspecs(repo);
     if !push_specs.is_empty() {
         let push_refs: Vec<&str> = push_specs.iter().map(String::as_str).collect();
+        let mut push_options = PushOptions::new();
+        push_options.remote_callbacks(remote_callbacks());
         remote
-            .push(&push_refs, None)
+            .push(&push_refs, Some(&mut push_options))
             .map_err(|e| SyncStepError { error: e, retryable: true })?;
     }
 
@@ -192,4 +233,19 @@ pub fn sync(repo: &Repository, remote_name: &str) -> Result<SyncReport, git2::Er
         "sync: push to remote '{remote_name}' still failing after {MAX_SYNC_ATTEMPTS} attempts \
          (remote kept moving or push was rejected): {detail}"
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn credentials_callback_errors_when_no_method_is_allowed() {
+        // An empty allowed-types set means the remote hasn't asked for SSH,
+        // user/pass, or the default provider -- there is nothing this
+        // callback can offer, so it must return an error rather than panic
+        // or silently authenticate with something the remote didn't request.
+        let result = credentials_callback("https://example.invalid/repo.git", None, CredentialType::empty());
+        assert!(result.is_err());
+    }
 }

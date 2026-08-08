@@ -106,6 +106,10 @@ pub fn review_diff_range(repo: &Repository, review: &ReviewState) -> Result<(Oid
     Ok((base_oid, target_oid))
 }
 
+// Mirrors the CLI's flat `review comment` arg surface (file, line, body,
+// reply_to, author, ts) 1:1 by design; grouping into a struct would just
+// move the same fields around rather than reduce them.
+#[allow(clippy::too_many_arguments)]
 pub fn add_comment(
     repo: &Repository,
     id_prefix: &str,

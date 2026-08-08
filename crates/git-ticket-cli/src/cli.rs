@@ -1,4 +1,12 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+#[derive(Clone, ValueEnum)]
+pub enum TicketTypeArg {
+    Task,
+    Bug,
+    Feature,
+    Chore,
+}
 
 #[derive(Parser)]
 #[command(name = "git-ticket")]
@@ -20,6 +28,8 @@ pub enum Command {
         assignee: Option<String>,
         #[arg(short = 'b', long, default_value = "")]
         body: String,
+        #[arg(long = "type", default_value = "task")]
+        ticket_type: TicketTypeArg,
     },
     List {
         #[arg(long)]
@@ -28,6 +38,8 @@ pub enum Command {
         status: Option<String>,
         #[arg(long)]
         assignee: Option<String>,
+        #[arg(long = "type")]
+        ticket_type: Option<TicketTypeArg>,
     },
     Show {
         id: String,
@@ -35,6 +47,10 @@ pub enum Command {
     Status {
         id: String,
         status: String,
+    },
+    Type {
+        id: String,
+        ticket_type: TicketTypeArg,
     },
     Assign {
         id: String,
@@ -69,6 +85,8 @@ pub enum TicketAction {
         assignee: Option<String>,
         #[arg(short = 'b', long, default_value = "")]
         body: String,
+        #[arg(long = "type", default_value = "task")]
+        ticket_type: TicketTypeArg,
     },
     List {
         #[arg(long)]
@@ -77,6 +95,8 @@ pub enum TicketAction {
         status: Option<String>,
         #[arg(long)]
         assignee: Option<String>,
+        #[arg(long = "type")]
+        ticket_type: Option<TicketTypeArg>,
     },
     Show {
         id: String,
@@ -84,6 +104,10 @@ pub enum TicketAction {
     Status {
         id: String,
         status: String,
+    },
+    Type {
+        id: String,
+        ticket_type: TicketTypeArg,
     },
     Assign {
         id: String,

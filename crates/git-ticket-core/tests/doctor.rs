@@ -1,5 +1,6 @@
 use git2::Repository;
 use git_ticket_core::doctor::{find_orphaned_pointers, prune_orphan};
+use git_ticket_core::event::TicketType;
 use git_ticket_core::repo::{resolve_pointer_ref, set_pointer_ref, PointerKind};
 use git_ticket_core::review_service::start_review;
 use git_ticket_core::ticket_service::create_ticket;
@@ -63,7 +64,7 @@ fn init_repo_with_diverged_branch() -> (tempfile::TempDir, Repository) {
 #[test]
 fn finds_no_orphans_for_a_healthy_ticket() {
     let (_dir, repo) = init_repo_with_branch("fix/x");
-    create_ticket(&repo, Some("main"), "T", "d", None, "alex", 1).unwrap();
+    create_ticket(&repo, Some("main"), "T", "d", None, TicketType::Task, "alex", 1).unwrap();
     assert!(find_orphaned_pointers(&repo).is_empty());
 }
 

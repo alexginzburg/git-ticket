@@ -1,4 +1,4 @@
-use crate::event::{TicketEvent, TicketStatus};
+use crate::event::{TicketEvent, TicketStatus, TicketType};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -17,6 +17,7 @@ pub struct TicketState {
     pub author: String,
     pub created_ts: u64,
     pub status: TicketStatus,
+    pub ticket_type: TicketType,
     pub assignee: Option<String>,
     pub comments: Vec<Comment>,
 }
@@ -48,7 +49,7 @@ pub fn project_ticket(id: &str, events: &[TicketEvent]) -> Option<TicketState> {
     let mut state: Option<TicketState> = None;
     for event in relevant {
         match event {
-            TicketEvent::TicketCreated { id, title, body, branch, author, ts } => {
+            TicketEvent::TicketCreated { id, title, body, branch, author, ticket_type, ts } => {
                 state = Some(TicketState {
                     id: id.clone(),
                     title: title.clone(),
@@ -57,6 +58,7 @@ pub fn project_ticket(id: &str, events: &[TicketEvent]) -> Option<TicketState> {
                     author: author.clone(),
                     created_ts: *ts,
                     status: TicketStatus::Open,
+                    ticket_type: ticket_type.clone(),
                     assignee: None,
                     comments: Vec::new(),
                 });
@@ -64,6 +66,11 @@ pub fn project_ticket(id: &str, events: &[TicketEvent]) -> Option<TicketState> {
             TicketEvent::StatusChanged { status, .. } => {
                 if let Some(s) = state.as_mut() {
                     s.status = status.clone();
+                }
+            }
+            TicketEvent::TypeChanged { ticket_type, .. } => {
+                if let Some(s) = state.as_mut() {
+                    s.ticket_type = ticket_type.clone();
                 }
             }
             TicketEvent::Assigned { assignee, .. } => {
@@ -93,12 +100,12 @@ pub fn project_all_tickets(events: &[TicketEvent]) -> HashMap<String, TicketStat
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::{TicketEvent, TicketStatus};
+    use crate::event::{TicketEvent, TicketStatus, TicketType};
 
     fn created(id: &str, ts: u64) -> TicketEvent {
         TicketEvent::TicketCreated {
             id: id.into(), title: "Fix bug".into(), body: "desc".into(),
-            branch: "fix/x".into(), author: "alex".into(), ts,
+            branch: "fix/x".into(), author: "alex".into(), ticket_type: TicketType::Task, ts,
         }
     }
 
@@ -113,8 +120,30 @@ mod tests {
         let state = project_ticket("a", &events).expect("ticket exists");
         assert_eq!(state.title, "Fix bug");
         assert_eq!(state.status, TicketStatus::Open);
+        assert_eq!(state.ticket_type, TicketType::Task);
         assert_eq!(state.assignee, None);
         assert!(state.comments.is_empty());
+    }
+
+    #[test]
+    fn later_type_change_overrides_earlier_one() {
+        let events = vec![
+            created("a", 1),
+            TicketEvent::TypeChanged { id: "a".into(), ticket_type: TicketType::Feature, ts: 2 },
+            TicketEvent::TypeChanged { id: "a".into(), ticket_type: TicketType::Bug, ts: 3 },
+        ];
+        let state = project_ticket("a", &events).unwrap();
+        assert_eq!(state.ticket_type, TicketType::Bug);
+    }
+
+    #[test]
+    fn same_timestamp_created_and_type_changed_still_apply_created_first() {
+        let events = vec![
+            TicketEvent::TypeChanged { id: "a".into(), ticket_type: TicketType::Bug, ts: 5 },
+            created("a", 5),
+        ];
+        let state = project_ticket("a", &events).unwrap();
+        assert_eq!(state.ticket_type, TicketType::Bug);
     }
 
     #[test]

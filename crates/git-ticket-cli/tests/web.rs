@@ -1,4 +1,5 @@
 use git_ticket_cli::web::build_router;
+use git_ticket_core::event::TicketType;
 use axum::body::Body;
 use axum::http::Request;
 use tower::ServiceExt; // for `oneshot`
@@ -15,7 +16,7 @@ fn init_repo_with_ticket(dir: &std::path::Path) {
     let commit = repo.find_commit(oid).unwrap();
     repo.branch("fix/x", &commit, false).unwrap();
     repo.set_head("refs/heads/fix/x").unwrap();
-    git_ticket_core::ticket_service::create_ticket(&repo, Some("main"), "Fix it", "details", None, "alex", 1).unwrap();
+    git_ticket_core::ticket_service::create_ticket(&repo, Some("main"), "Fix it", "details", None, TicketType::Task, "alex", 1).unwrap();
 }
 
 #[tokio::test]

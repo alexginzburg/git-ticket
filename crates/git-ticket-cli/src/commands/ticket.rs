@@ -1,6 +1,6 @@
-use crate::cli::TicketAction;
+use crate::cli::{TicketAction, TicketTypeArg};
 use crate::git_env::{current_author, now_ts, open_repo};
-use git_ticket_core::event::TicketStatus;
+use git_ticket_core::event::{TicketStatus, TicketType};
 use git_ticket_core::ticket::TicketState;
 use git_ticket_core::ticket_service::{self, TicketError};
 
@@ -21,11 +21,30 @@ fn parse_status(s: &str) -> Result<TicketStatus, String> {
     }
 }
 
+fn to_core_type(t: TicketTypeArg) -> TicketType {
+    match t {
+        TicketTypeArg::Task => TicketType::Task,
+        TicketTypeArg::Bug => TicketType::Bug,
+        TicketTypeArg::Feature => TicketType::Feature,
+        TicketTypeArg::Chore => TicketType::Chore,
+    }
+}
+
+fn type_str(ticket_type: &TicketType) -> &'static str {
+    match ticket_type {
+        TicketType::Task => "task",
+        TicketType::Bug => "bug",
+        TicketType::Feature => "feature",
+        TicketType::Chore => "chore",
+    }
+}
+
 fn print_ticket_line(t: &TicketState) {
     println!(
-        "{} [{}] {} (branch: {}, assignee: {})",
+        "{} [{}] [{}] {} (branch: {}, assignee: {})",
         t.id,
         status_str(&t.status),
+        type_str(&t.ticket_type),
         t.title,
         t.branch,
         t.assignee.as_deref().unwrap_or("-"),
@@ -53,11 +72,20 @@ pub fn run(action: TicketAction) {
     let author = current_author(&repo);
 
     match action {
-        TicketAction::New { title, assignee, body } => {
+        TicketAction::New { title, assignee, body, ticket_type } => {
             // `None` => resolved by git-ticket-core from `ticket.baseBranch`
             // config, falling back to "main" -- the same policy review
             // creation uses.
-            match ticket_service::create_ticket(&repo, None, &title, &body, assignee.as_deref(), &author, now_ts()) {
+            match ticket_service::create_ticket(
+                &repo,
+                None,
+                &title,
+                &body,
+                assignee.as_deref(),
+                to_core_type(ticket_type),
+                &author,
+                now_ts(),
+            ) {
                 Ok(t) => {
                     print_ticket_line(&t);
                     println!("Tip: add trailer 'Ticket-Id: {}' to commits on this branch", t.id);
@@ -65,7 +93,7 @@ pub fn run(action: TicketAction) {
                 Err(e) => print_error(e),
             }
         }
-        TicketAction::List { branch, status, assignee } => {
+        TicketAction::List { branch, status, assignee, ticket_type } => {
             match ticket_service::list_tickets(&repo) {
                 Ok(mut tickets) => {
                     if let Some(b) = &branch {
@@ -78,6 +106,10 @@ pub fn run(action: TicketAction) {
                     }
                     if let Some(a) = &assignee {
                         tickets.retain(|t| t.assignee.as_deref() == Some(a.as_str()));
+                    }
+                    if let Some(t) = ticket_type {
+                        let want = to_core_type(t);
+                        tickets.retain(|t| t.ticket_type == want);
                     }
                     for t in &tickets {
                         print_ticket_line(t);
@@ -105,6 +137,12 @@ pub fn run(action: TicketAction) {
                 }
             };
             match ticket_service::set_status(&repo, &id, status, now_ts()) {
+                Ok(t) => print_ticket_line(&t),
+                Err(e) => print_error(e),
+            }
+        }
+        TicketAction::Type { id, ticket_type } => {
+            match ticket_service::set_type(&repo, &id, to_core_type(ticket_type), now_ts()) {
                 Ok(t) => print_ticket_line(&t),
                 Err(e) => print_error(e),
             }

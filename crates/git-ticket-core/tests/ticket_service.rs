@@ -1,5 +1,5 @@
 use git2::Repository;
-use git_ticket_core::event::TicketStatus;
+use git_ticket_core::event::{TicketStatus, TicketType};
 use git_ticket_core::repo::{merge_base, resolve_pointer_ref, PointerKind};
 use git_ticket_core::ticket_service::*;
 
@@ -68,7 +68,7 @@ fn create_ticket_anchors_to_merge_base_of_base_branch() {
     let (_dir, repo, main_tip, feature_tip) = init_repo_with_diverging_branches();
     assert_ne!(main_tip, feature_tip, "feature must diverge from main");
 
-    let created = create_ticket(&repo, Some("main"), "Fix login", "details", None, "alex", 100).unwrap();
+    let created = create_ticket(&repo, Some("main"), "Fix login", "details", None, TicketType::Task, "alex", 100).unwrap();
     assert_eq!(created.branch, "feature");
 
     let expected_base = merge_base(&repo, feature_tip, main_tip).unwrap();
@@ -84,19 +84,43 @@ fn create_ticket_anchors_to_merge_base_of_base_branch() {
 #[test]
 fn create_then_show_ticket() {
     let (_dir, repo) = init_repo_with_branch("fix/login");
-    let created = create_ticket(&repo, Some("main"), "Fix login", "details", None, "alex", 100).unwrap();
+    let created = create_ticket(&repo, Some("main"), "Fix login", "details", None, TicketType::Task, "alex", 100).unwrap();
     assert_eq!(created.title, "Fix login");
     assert_eq!(created.branch, "fix/login");
     assert_eq!(created.status, TicketStatus::Open);
+    assert_eq!(created.ticket_type, TicketType::Task);
 
     let shown = show_ticket(&repo, &created.id).unwrap();
     assert_eq!(shown, created);
 }
 
 #[test]
+fn create_ticket_with_explicit_type_round_trips() {
+    let (_dir, repo) = init_repo_with_branch("fix/login");
+    let created =
+        create_ticket(&repo, Some("main"), "Fix login", "details", None, TicketType::Bug, "alex", 100).unwrap();
+    assert_eq!(created.ticket_type, TicketType::Bug);
+
+    let shown = show_ticket(&repo, &created.id).unwrap();
+    assert_eq!(shown.ticket_type, TicketType::Bug);
+}
+
+#[test]
+fn set_type_changes_ticket_type() {
+    let (_dir, repo) = init_repo_with_branch("fix/login");
+    let created =
+        create_ticket(&repo, Some("main"), "Fix login", "details", None, TicketType::Task, "alex", 100).unwrap();
+
+    set_type(&repo, &created.id, TicketType::Feature, 101).unwrap();
+
+    let final_state = show_ticket(&repo, &created.id).unwrap();
+    assert_eq!(final_state.ticket_type, TicketType::Feature);
+}
+
+#[test]
 fn show_ticket_by_unambiguous_prefix() {
     let (_dir, repo) = init_repo_with_branch("fix/login");
-    let created = create_ticket(&repo, Some("main"), "Fix login", "details", None, "alex", 100).unwrap();
+    let created = create_ticket(&repo, Some("main"), "Fix login", "details", None, TicketType::Task, "alex", 100).unwrap();
     let prefix = &created.id[..4];
     let shown = show_ticket(&repo, prefix).unwrap();
     assert_eq!(shown.id, created.id);
@@ -105,7 +129,7 @@ fn show_ticket_by_unambiguous_prefix() {
 #[test]
 fn status_assign_and_comment_update_state() {
     let (_dir, repo) = init_repo_with_branch("fix/login");
-    let created = create_ticket(&repo, Some("main"), "Fix login", "details", None, "alex", 100).unwrap();
+    let created = create_ticket(&repo, Some("main"), "Fix login", "details", None, TicketType::Task, "alex", 100).unwrap();
 
     set_status(&repo, &created.id, TicketStatus::InProgress, 101).unwrap();
     assign_ticket(&repo, &created.id, "bob", 102).unwrap();
@@ -121,8 +145,8 @@ fn status_assign_and_comment_update_state() {
 #[test]
 fn list_tickets_returns_all_created_tickets() {
     let (_dir, repo) = init_repo_with_branch("fix/login");
-    create_ticket(&repo, Some("main"), "First", "d1", None, "alex", 100).unwrap();
-    create_ticket(&repo, Some("main"), "Second", "d2", None, "alex", 101).unwrap();
+    create_ticket(&repo, Some("main"), "First", "d1", None, TicketType::Task, "alex", 100).unwrap();
+    create_ticket(&repo, Some("main"), "Second", "d2", None, TicketType::Task, "alex", 101).unwrap();
 
     let all = list_tickets(&repo).unwrap();
     assert_eq!(all.len(), 2);

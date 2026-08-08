@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use std::process::Command as StdCommand;
 
@@ -18,12 +19,20 @@ fn new_then_list_then_show() {
     init_repo(dir.path());
 
     let mut new_cmd = Command::cargo_bin("git-ticket").unwrap();
-    new_cmd.current_dir(dir.path()).args(["new", "Fix login", "-b", "details"]);
-    new_cmd.assert().success().stdout(contains("Fix login"));
+    new_cmd.current_dir(dir.path()).args(["new", "Fix login", "-b", "details", "--type", "bug"]);
+    new_cmd.assert().success().stdout(contains("Fix login")).stdout(contains("bug"));
 
     let mut list_cmd = Command::cargo_bin("git-ticket").unwrap();
     list_cmd.current_dir(dir.path()).args(["list"]);
-    list_cmd.assert().success().stdout(contains("Fix login")).stdout(contains("open"));
+    list_cmd.assert().success().stdout(contains("Fix login")).stdout(contains("open")).stdout(contains("bug"));
+
+    let mut list_filtered_cmd = Command::cargo_bin("git-ticket").unwrap();
+    list_filtered_cmd.current_dir(dir.path()).args(["list", "--type", "bug"]);
+    list_filtered_cmd.assert().success().stdout(contains("Fix login"));
+
+    let mut list_wrong_type_cmd = Command::cargo_bin("git-ticket").unwrap();
+    list_wrong_type_cmd.current_dir(dir.path()).args(["list", "--type", "chore"]);
+    list_wrong_type_cmd.assert().success().stdout(contains("Fix login").not());
 }
 
 #[test]
@@ -46,6 +55,10 @@ fn status_and_assign_update_the_ticket() {
         .assert().success();
 
     Command::cargo_bin("git-ticket").unwrap()
+        .current_dir(dir.path()).args(["type", id, "feature"])
+        .assert().success().stdout(contains("feature"));
+
+    Command::cargo_bin("git-ticket").unwrap()
         .current_dir(dir.path()).args(["show", id])
-        .assert().success().stdout(contains("in-progress")).stdout(contains("bob"));
+        .assert().success().stdout(contains("in-progress")).stdout(contains("bob")).stdout(contains("feature"));
 }

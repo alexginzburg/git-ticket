@@ -9,15 +9,18 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Command::Init => commands::init::run(),
-        Command::New { title, assignee, body } => {
-            commands::ticket::run(TicketAction::New { title, assignee, body })
+        Command::New { title, assignee, body, ticket_type } => {
+            commands::ticket::run(TicketAction::New { title, assignee, body, ticket_type })
         }
-        Command::List { branch, status, assignee } => {
-            commands::ticket::run(TicketAction::List { branch, status, assignee })
+        Command::List { branch, status, assignee, ticket_type } => {
+            commands::ticket::run(TicketAction::List { branch, status, assignee, ticket_type })
         }
         Command::Show { id } => commands::ticket::run(TicketAction::Show { id }),
         Command::Status { id, status } => {
             commands::ticket::run(TicketAction::Status { id, status })
+        }
+        Command::Type { id, ticket_type } => {
+            commands::ticket::run(TicketAction::Type { id, ticket_type })
         }
         Command::Assign { id, assignee } => {
             commands::ticket::run(TicketAction::Assign { id, assignee })

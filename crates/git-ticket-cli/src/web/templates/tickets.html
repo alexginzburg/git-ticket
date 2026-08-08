@@ -5,7 +5,7 @@
   <h1>Tickets</h1>
   <ul>
     {% for t in tickets %}
-    <li><a href="/tickets/{{ t.id }}">{{ t.title }}</a> [{{ t.status }}] ({{ t.branch }})</li>
+    <li><a href="/tickets/{{ t.id }}">{{ t.title }}</a> [{{ t.status }}] [{{ t.ticket_type }}] ({{ t.branch }})</li>
     {% endfor %}
   </ul>
 </body>

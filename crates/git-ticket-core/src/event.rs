@@ -8,13 +8,31 @@ pub enum TicketStatus {
     Closed,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TicketType {
+    Task,
+    Bug,
+    Feature,
+    Chore,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum TicketEvent {
-    TicketCreated { id: String, title: String, body: String, branch: String, author: String, ts: u64 },
+    TicketCreated {
+        id: String,
+        title: String,
+        body: String,
+        branch: String,
+        author: String,
+        ticket_type: TicketType,
+        ts: u64,
+    },
     StatusChanged { id: String, status: TicketStatus, ts: u64 },
     Assigned { id: String, assignee: String, ts: u64 },
     TicketCommented { id: String, body: String, author: String, ts: u64 },
+    TypeChanged { id: String, ticket_type: TicketType, ts: u64 },
 }
 
 impl TicketEvent {
@@ -23,7 +41,8 @@ impl TicketEvent {
             TicketEvent::TicketCreated { id, .. }
             | TicketEvent::StatusChanged { id, .. }
             | TicketEvent::Assigned { id, .. }
-            | TicketEvent::TicketCommented { id, .. } => id,
+            | TicketEvent::TicketCommented { id, .. }
+            | TicketEvent::TypeChanged { id, .. } => id,
         }
     }
 
@@ -32,7 +51,8 @@ impl TicketEvent {
             TicketEvent::TicketCreated { ts, .. }
             | TicketEvent::StatusChanged { ts, .. }
             | TicketEvent::Assigned { ts, .. }
-            | TicketEvent::TicketCommented { ts, .. } => *ts,
+            | TicketEvent::TicketCommented { ts, .. }
+            | TicketEvent::TypeChanged { ts, .. } => *ts,
         }
     }
 
@@ -108,6 +128,7 @@ mod tests {
             body: "Users can't log in on Safari".into(),
             branch: "fix/login".into(),
             author: "alex".into(),
+            ticket_type: TicketType::Bug,
             ts: 1_700_000_000,
         };
         let line = event.to_line();
@@ -119,16 +140,18 @@ mod tests {
     #[test]
     fn ticket_event_id_and_ts_accessors_cover_every_variant() {
         let events = vec![
-            TicketEvent::TicketCreated { id: "a".into(), title: "t".into(), body: "b".into(), branch: "br".into(), author: "au".into(), ts: 1 },
+            TicketEvent::TicketCreated { id: "a".into(), title: "t".into(), body: "b".into(), branch: "br".into(), author: "au".into(), ticket_type: TicketType::Task, ts: 1 },
             TicketEvent::StatusChanged { id: "a".into(), status: TicketStatus::Closed, ts: 2 },
             TicketEvent::Assigned { id: "a".into(), assignee: "bob".into(), ts: 3 },
             TicketEvent::TicketCommented { id: "a".into(), body: "hi".into(), author: "au".into(), ts: 4 },
+            TicketEvent::TypeChanged { id: "a".into(), ticket_type: TicketType::Bug, ts: 5 },
         ];
         for event in &events {
             assert_eq!(event.id(), "a");
         }
         assert_eq!(events[0].ts(), 1);
         assert_eq!(events[3].ts(), 4);
+        assert_eq!(events[4].ts(), 5);
     }
 
     #[test]

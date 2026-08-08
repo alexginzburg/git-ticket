@@ -1,4 +1,4 @@
-use crate::event::{TicketEvent, TicketStatus};
+use crate::event::{TicketEvent, TicketStatus, TicketType};
 use crate::id::{generate_id, resolve_prefix, PrefixError};
 use crate::repo::{
     append_note_line, ensure_merge_strategy, list_pointer_ids, merge_base, read_note,
@@ -47,12 +47,14 @@ fn append_event(repo: &Repository, id: &str, event: &TicketEvent) -> Result<(), 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_ticket(
     repo: &Repository,
     base_branch: Option<&str>,
     title: &str,
     body: &str,
     assignee: Option<&str>,
+    ticket_type: TicketType,
     author: &str,
     ts: u64,
 ) -> Result<TicketState, TicketError> {
@@ -77,6 +79,7 @@ pub fn create_ticket(
         body: body.to_string(),
         branch,
         author: author.to_string(),
+        ticket_type,
         ts,
     };
 
@@ -106,6 +109,12 @@ pub fn show_ticket(repo: &Repository, id_prefix: &str) -> Result<TicketState, Ti
 pub fn set_status(repo: &Repository, id_prefix: &str, status: TicketStatus, ts: u64) -> Result<TicketState, TicketError> {
     let id = resolve_id(repo, id_prefix)?;
     append_event(repo, &id, &TicketEvent::StatusChanged { id: id.clone(), status, ts })?;
+    load_ticket(repo, &id)
+}
+
+pub fn set_type(repo: &Repository, id_prefix: &str, ticket_type: TicketType, ts: u64) -> Result<TicketState, TicketError> {
+    let id = resolve_id(repo, id_prefix)?;
+    append_event(repo, &id, &TicketEvent::TypeChanged { id: id.clone(), ticket_type, ts })?;
     load_ticket(repo, &id)
 }
 

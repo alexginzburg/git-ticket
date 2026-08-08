@@ -1,4 +1,5 @@
 use git2::Repository;
+use git_ticket_core::event::TicketType;
 use git_ticket_core::sync::sync;
 use git_ticket_core::ticket_service::{create_ticket, list_tickets};
 
@@ -68,8 +69,8 @@ fn concurrent_divergent_notes_converge_across_clones() {
 
     // Both tickets land as separate TicketCreated events on the SAME commit's
     // note, with distinct authors/timestamps so the serialized events differ.
-    create_ticket(&repo_a, Some("main"), "From A", "d", None, "alex", 100).unwrap();
-    create_ticket(&repo_b, Some("main"), "From B", "d", None, "bob", 20_100).unwrap();
+    create_ticket(&repo_a, Some("main"), "From A", "d", None, TicketType::Task, "alex", 100).unwrap();
+    create_ticket(&repo_b, Some("main"), "From B", "d", None, TicketType::Task, "bob", 20_100).unwrap();
 
     // A publishes first; the remote's notes ref is created from nothing.
     sync(&repo_a, "origin").unwrap();
@@ -98,7 +99,7 @@ fn repeated_sync_is_idempotent() {
     let (remote, _seed) = init_seeded_remote();
     let (_dir_a, repo_a) = clone_of(remote.path());
 
-    create_ticket(&repo_a, Some("main"), "From A", "d", None, "alex", 100).unwrap();
+    create_ticket(&repo_a, Some("main"), "From A", "d", None, TicketType::Task, "alex", 100).unwrap();
     sync(&repo_a, "origin").unwrap();
     let report = sync(&repo_a, "origin").unwrap();
     assert_eq!(report.tickets_merged, 0);

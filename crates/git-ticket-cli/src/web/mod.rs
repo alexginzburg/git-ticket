@@ -5,7 +5,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use git_ticket_core::diff::{compute_diff, DiffLineKind};
-use git_ticket_core::event::TicketStatus;
+use git_ticket_core::event::{TicketStatus, TicketType};
 use git_ticket_core::review_service::{review_diff_range, show_review};
 use git_ticket_core::ticket_service::{list_tickets, show_ticket};
 use std::path::PathBuf;
@@ -28,10 +28,20 @@ fn status_str(status: &TicketStatus) -> &'static str {
     }
 }
 
+fn type_str(ticket_type: &TicketType) -> &'static str {
+    match ticket_type {
+        TicketType::Task => "task",
+        TicketType::Bug => "bug",
+        TicketType::Feature => "feature",
+        TicketType::Chore => "chore",
+    }
+}
+
 struct TicketRow {
     id: String,
     title: String,
     status: &'static str,
+    ticket_type: &'static str,
     branch: String,
 }
 
@@ -51,6 +61,7 @@ async fn tickets_index(State(state): State<AppState>) -> Response {
                     id: t.id,
                     title: t.title,
                     status: status_str(&t.status),
+                    ticket_type: type_str(&t.ticket_type),
                     branch: t.branch,
                 })
                 .collect();
@@ -70,6 +81,7 @@ struct CommentRow {
 struct TicketDetailTemplate {
     title: String,
     status: &'static str,
+    ticket_type: &'static str,
     branch: String,
     assignee: String,
     body: String,
@@ -82,6 +94,7 @@ async fn ticket_detail(State(state): State<AppState>, Path(id): Path<String>) ->
         Ok(ticket) => TicketDetailTemplate {
             title: ticket.title,
             status: status_str(&ticket.status),
+            ticket_type: type_str(&ticket.ticket_type),
             branch: ticket.branch,
             assignee: ticket.assignee.unwrap_or_else(|| "-".to_string()),
             body: ticket.body,

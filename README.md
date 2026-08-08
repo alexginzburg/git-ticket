@@ -18,9 +18,10 @@ This installs a `git-ticket` binary on your `PATH`. Because git treats any `git-
 
 ```bash
 git checkout -b fix/login
-git ticket new "Fix login bug" -b "Users can't log in on Safari"
-git ticket list
+git ticket new "Fix login bug" -b "Users can't log in on Safari" --type bug
+git ticket list                      # defaults to open tickets; --status all shows everything
 git ticket status <id> in-progress
+git ticket type <id> feature
 git ticket assign <id> alex
 
 git ticket review start fix/login --base main
@@ -28,12 +29,16 @@ git ticket review comment <review-id> --file src/auth.rs --line 42 "why is this 
 git ticket review verdict <review-id> approve
 git ticket review show <review-id>
 
-git ticket web            # browse tickets/reviews at http://127.0.0.1:4747
+git ticket web             # prints a clickable URL, e.g. http://localhost:4747/git-ticket
 ```
 
 Ticket/review ids are short hex strings, addressable by unambiguous prefix — you don't need to type the full id.
 
 `git ticket new` also prints a suggested `Ticket-Id:` commit trailer you can add to commits on that branch, linking individual commits to the ticket in a way that's visible even without the tool installed.
+
+Tickets have a `type` (`task`/`bug`/`feature`/`chore`, defaulting to `task`) alongside their `status`. Both `list` and the web ticket list filter to `status: open` by default — pass `--status all` (CLI) or `?status=all` (web) to see closed/in-progress tickets too, or `--status closed`/`?status=closed` etc. to see just one status.
+
+`git ticket web` binds port 4747 by default, but falls back to a free port automatically if that's already taken (e.g. by another repo's `git ticket web`), and the URL it prints always includes the repo's name in the path — so you can run it in several repos at once and tell their browser tabs apart.
 
 ## Using it with a team
 
@@ -50,6 +55,8 @@ refs/git-ticket/tickets/<id>      refs/git-ticket/reviews/<id>
 ```
 
 Merges are conflict-free by construction (an append-only event log, unioned via a `cat_sort_uniq`-equivalent merge) — concurrent edits from different people never produce a real git merge conflict. If a push briefly loses a race with another sync, `git ticket sync` retries a bounded number of times; if it still fails, just run it again.
+
+`sync` authenticates against the remote the same way `git push`/`fetch` do (SSH agent, then your git credential helper, then libgit2's default) — no separate login step. It reports what it actually did, e.g. `synced: 2 ref(s) pushed, 0 ticket note(s) merged, 0 review note(s) merged` — a run that only pushed your own changes (nothing new to merge in) is expected to show `0` merged and isn't a sign that sync did nothing.
 
 Everyone on the team needs `git-ticket` installed locally (same `cargo install` step above) — the tool itself isn't distributed through the repo, only the ticket/review *data* is.
 

@@ -65,9 +65,9 @@ branches happen to share the same merge-base, their tickets simply appear
 as separate event lines on the same commit's note — no collision, because
 retrieval is always by ticket ID via the pointer ref, not by scanning.
 
-**Ticket events:** `TicketCreated{id, title, body, branch, author, ts}`,
+**Ticket events:** `TicketCreated{id, title, body, branch, author, ticket_type, ts}`,
 `StatusChanged{id, status, ts}`, `Assigned{id, assignee, ts}`,
-`TicketCommented{id, body, author, ts}`.
+`TicketCommented{id, body, author, ts}`, `TypeChanged{id, ticket_type, ts}`.
 
 **Review linkage:** a review is snapshotted to the **specific commit
 being reviewed** (branch tip at review-open time, or an explicit target
@@ -88,7 +88,8 @@ repo's default branch) — matches how PR review tools compute "what's
 new in this branch."
 
 **Ticket schema (v1, minimal):** `title`, freeform `body`, `status`
-(open/in-progress/closed), `assignee`.
+(open/in-progress/closed), `type` (task/bug/feature/chore, defaults to
+`task`), `assignee`.
 
 **IDs:** short random hashes (like git short SHAs), addressable by
 unambiguous prefix — same UX as `git` itself.
@@ -97,7 +98,13 @@ unambiguous prefix — same UX as `git` itself.
 remote as code, via `git ticket sync`. This is the *only* command that
 touches the network; every other command works purely against the local
 repo, which is what makes offline use fully first-class rather than a
-degraded mode.
+degraded mode. Authentication is resolved the same way the `git` CLI would
+— SSH agent for SSH remotes, the configured credential helper for HTTPS,
+then libgit2's default provider — so `sync` works against the same remotes
+`git push`/`fetch` already do, with no separate credential setup. On
+success, `sync` reports how many refs it pushed in addition to how many
+ticket/review notes it merged in from the remote, so a run that only pushed
+(nothing new to merge) doesn't read as a no-op.
 
 **Commit trailers:** `git ticket` commands may suggest/insert a
 `Ticket-Id: <id>` trailer (via `git interpret-trailers` conventions) when
@@ -128,10 +135,11 @@ same core the CLI uses — no separate data path to drift out of sync.
 
 ```
 git ticket init                                   # explicit: sets notes.*.mergeStrategy=cat_sort_uniq, writes repo config
-git ticket new "<title>" [-a <assignee>] [-b <body>]
-git ticket list [--branch <b>] [--status <s>] [--assignee <a>]
+git ticket new "<title>" [-a <assignee>] [-b <body>] [--type <task|bug|feature|chore>]
+git ticket list [--branch <b>] [--status <s>|all] [--assignee <a>] [--type <t>]
 git ticket show <id>
 git ticket status <id> <open|in-progress|closed>
+git ticket type <id> <task|bug|feature|chore>
 git ticket assign <id> <user>
 git ticket comment <id> "<text>"
 
@@ -141,9 +149,17 @@ git ticket review verdict <review-id> approve|request-changes|comment ["<summary
 git ticket review show <review-id>                 # diff + threaded comments, in terminal
 
 git ticket sync [<remote>]                          # fetch + notes merge (cat_sort_uniq) + push, all git-ticket refs
-git ticket web [--port <n>]                          # local read-only server
+git ticket web [--port <n>]                          # local read-only server, routes nested under /<repo-name>
 git ticket doctor                                    # diagnose orphaned pointer refs / notes, see Edge Cases
 ```
+
+`list` (both CLI and the web ticket list) defaults to `--status open`; pass
+`--status all`/`?status=all` to see every status. `git ticket web` binds
+port 4747 by default but falls back to an OS-assigned free port if that's
+already taken (e.g. another repo's `web` is running), and always prints the
+URL it bound, with the repo's directory name in the path (e.g.
+`http://localhost:4747/git-ticket`) so multiple repos' web UIs stay
+distinguishable when run at once.
 
 `git ticket new` auto-detects the current branch and its root commit — no
 manual ID wiring for the common case.

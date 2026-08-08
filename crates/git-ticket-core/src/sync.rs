@@ -8,6 +8,7 @@ use git2::{Cred, CredentialType, FetchOptions, Oid, PushOptions, Remote, RemoteC
 pub struct SyncReport {
     pub tickets_merged: usize,
     pub reviews_merged: usize,
+    pub refs_pushed: usize,
 }
 
 const FETCH_TICKETS_NOTES: &str = "refs/git-ticket-fetch/notes/tickets";
@@ -200,6 +201,10 @@ fn sync_once(repo: &Repository, remote_name: &str, report: &mut SyncReport) -> R
         remote
             .push(&push_refs, Some(&mut push_options))
             .map_err(|e| SyncStepError { error: e, retryable: true })?;
+        // Only the attempt that actually succeeds counts -- a failed push is
+        // retried from scratch, so an earlier attempt's ref count must not
+        // accumulate into this one.
+        report.refs_pushed = push_specs.len();
     }
 
     Ok(())

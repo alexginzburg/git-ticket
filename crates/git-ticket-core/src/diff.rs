@@ -1,15 +1,17 @@
 use std::cell::RefCell;
 
 use git2::{Oid, Repository};
+use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum DiffLineKind {
     Context,
     Added,
     Removed,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DiffLine {
     pub kind: DiffLineKind,
     pub old_lineno: Option<u32>,
@@ -17,13 +19,13 @@ pub struct DiffLine {
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DiffHunk {
     pub header: String,
     pub lines: Vec<DiffLine>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FileDiff {
     pub path: String,
     pub hunks: Vec<DiffHunk>,
@@ -114,5 +116,21 @@ mod tests {
             .map(|l| l.content.as_str())
             .collect();
         assert_eq!(added, vec!["line2"]);
+    }
+
+    #[test]
+    fn file_diff_serializes_to_json_with_lowercase_line_kinds() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        let base = commit_file(&repo, "a.txt", "line1\n", None);
+        let base_commit = repo.find_commit(base).unwrap();
+        let target = commit_file(&repo, "a.txt", "line1\nline2\n", Some(&base_commit));
+
+        let diffs = compute_diff(&repo, base, target).unwrap();
+        let json = serde_json::to_string(&diffs).unwrap();
+        assert!(json.contains("\"path\""));
+        assert!(json.contains("\"hunks\""));
+        assert!(json.contains("\"added\""));
+        assert!(!json.contains("\"Added\""));
     }
 }

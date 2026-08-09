@@ -8,11 +8,19 @@ pub enum TicketTypeArg {
     Chore,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum OutputFormat {
+    Text,
+    Json,
+}
+
 #[derive(Parser)]
 #[command(name = "git-ticket")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
+    #[arg(long, global = true, default_value = "text")]
+    pub format: OutputFormat,
 }
 
 // Ticket actions are flattened to top-level subcommands (`git-ticket new`,

@@ -1,6 +1,7 @@
 use crate::event::{ReviewEvent, Verdict};
+use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReviewComment {
     pub thread_id: String,
     pub parent_id: Option<String>,
@@ -11,7 +12,7 @@ pub struct ReviewComment {
     pub ts: u64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReviewState {
     pub id: String,
     pub target: String,
@@ -167,5 +168,19 @@ mod tests {
         let events = vec![opened("r1", 1), opened("r2", 1)];
         let state = project_review("r1", &events).unwrap();
         assert_eq!(state.id, "r1");
+    }
+
+    #[test]
+    fn review_state_serializes_to_json_with_expected_keys() {
+        let events = vec![
+            opened("r1", 1),
+            ReviewEvent::VerdictSet { id: "r1".into(), verdict: Verdict::Approve, author: "alex".into(), ts: 2 },
+        ];
+        let state = project_review("r1", &events).unwrap();
+        let json = serde_json::to_string(&state).unwrap();
+        for key in ["id", "target", "base", "author", "opened_ts", "comments", "verdicts"] {
+            assert!(json.contains(&format!("\"{key}\"")), "missing key '{key}' in {json}");
+        }
+        assert!(json.contains("\"approve\""));
     }
 }

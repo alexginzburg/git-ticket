@@ -1,5 +1,6 @@
 pub mod doctor;
 pub mod init;
+pub mod output;
 pub mod review;
 pub mod sync;
 pub mod ticket;

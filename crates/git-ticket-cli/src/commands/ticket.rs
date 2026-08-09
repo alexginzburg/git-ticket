@@ -1,8 +1,10 @@
-use crate::cli::{TicketAction, TicketTypeArg};
+use crate::cli::{OutputFormat, TicketAction, TicketTypeArg};
+use crate::commands::output;
 use crate::git_env::{current_author, now_ts, open_repo};
 use git_ticket_core::event::{TicketStatus, TicketType};
 use git_ticket_core::ticket::TicketState;
 use git_ticket_core::ticket_service::{self, TicketError};
+use serde::Serialize;
 
 fn status_str(status: &TicketStatus) -> &'static str {
     match status {
@@ -51,23 +53,55 @@ fn print_ticket_line(t: &TicketState) {
     );
 }
 
-fn print_error(e: TicketError) -> ! {
+fn ticket_error_message(e: &TicketError) -> String {
     match e {
-        TicketError::NotFound => eprintln!("error: ticket not found"),
-        TicketError::Ambiguous(matches) => eprintln!("error: ambiguous id, matches: {}", matches.join(", ")),
-        TicketError::DetachedHead => eprintln!("error: not on a branch (detached HEAD)"),
-        TicketError::Git(e) => eprintln!("error: {e}"),
+        TicketError::NotFound => "ticket not found".to_string(),
+        TicketError::Ambiguous(matches) => format!("ambiguous id, matches: {}", matches.join(", ")),
+        TicketError::DetachedHead => "not on a branch (detached HEAD)".to_string(),
+        TicketError::Git(e) => format!("{e}"),
     }
-    std::process::exit(1);
 }
 
-pub fn run(action: TicketAction) {
+fn print_error(format: OutputFormat, e: TicketError) -> ! {
+    output::error_exit(format, &ticket_error_message(&e))
+}
+
+/// List-view projection of `TicketState` that omits `comments`, matching
+/// what the human `list` output already shows (no comment bodies) -- fetch
+/// `show <id> --format json` for the full thread.
+#[derive(Serialize)]
+struct TicketListJson {
+    id: String,
+    title: String,
+    body: String,
+    branch: String,
+    author: String,
+    created_ts: u64,
+    status: TicketStatus,
+    ticket_type: TicketType,
+    assignee: Option<String>,
+}
+
+impl From<TicketState> for TicketListJson {
+    fn from(t: TicketState) -> Self {
+        TicketListJson {
+            id: t.id,
+            title: t.title,
+            body: t.body,
+            branch: t.branch,
+            author: t.author,
+            created_ts: t.created_ts,
+            status: t.status,
+            ticket_type: t.ticket_type,
+            assignee: t.assignee,
+        }
+    }
+}
+
+pub fn run(action: TicketAction, format: OutputFormat) {
     let repo = match open_repo() {
         Ok(r) => r,
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(1);
-        }
+        Err(e) => output::error_exit(format, &e),
     };
     let author = current_author(&repo);
 
@@ -90,7 +124,7 @@ pub fn run(action: TicketAction) {
                     print_ticket_line(&t);
                     println!("Tip: add trailer 'Ticket-Id: {}' to commits on this branch", t.id);
                 }
-                Err(e) => print_error(e),
+                Err(e) => print_error(format, e),
             }
         }
         TicketAction::List { branch, status, assignee, ticket_type } => {
@@ -102,10 +136,7 @@ pub fn run(action: TicketAction) {
                     if status != "all" {
                         match parse_status(&status) {
                             Ok(want) => tickets.retain(|t| t.status == want),
-                            Err(msg) => {
-                                eprintln!("error: {msg}");
-                                std::process::exit(1);
-                            }
+                            Err(msg) => output::error_exit(format, &msg),
                         }
                     }
                     if let Some(a) = &assignee {
@@ -115,52 +146,61 @@ pub fn run(action: TicketAction) {
                         let want = to_core_type(t);
                         tickets.retain(|t| t.ticket_type == want);
                     }
-                    for t in &tickets {
-                        print_ticket_line(t);
+                    match format {
+                        OutputFormat::Json => {
+                            let json_tickets: Vec<TicketListJson> =
+                                tickets.into_iter().map(TicketListJson::from).collect();
+                            output::print_json(&json_tickets);
+                        }
+                        OutputFormat::Text => {
+                            for t in &tickets {
+                                print_ticket_line(t);
+                            }
+                        }
                     }
                 }
-                Err(e) => print_error(e),
+                Err(e) => print_error(format, e),
             }
         }
         TicketAction::Show { id } => match ticket_service::show_ticket(&repo, &id) {
-            Ok(t) => {
-                print_ticket_line(&t);
-                println!("{}", t.body);
-                for c in &t.comments {
-                    println!("  - {} ({}): {}", c.author, c.ts, c.body);
+            Ok(t) => match format {
+                OutputFormat::Json => output::print_json(&t),
+                OutputFormat::Text => {
+                    print_ticket_line(&t);
+                    println!("{}", t.body);
+                    for c in &t.comments {
+                        println!("  - {} ({}): {}", c.author, c.ts, c.body);
+                    }
                 }
-            }
-            Err(e) => print_error(e),
+            },
+            Err(e) => print_error(format, e),
         },
         TicketAction::Status { id, status } => {
             let status = match parse_status(&status) {
                 Ok(s) => s,
-                Err(msg) => {
-                    eprintln!("error: {msg}");
-                    std::process::exit(1);
-                }
+                Err(msg) => output::error_exit(format, &msg),
             };
             match ticket_service::set_status(&repo, &id, status, now_ts()) {
                 Ok(t) => print_ticket_line(&t),
-                Err(e) => print_error(e),
+                Err(e) => print_error(format, e),
             }
         }
         TicketAction::Type { id, ticket_type } => {
             match ticket_service::set_type(&repo, &id, to_core_type(ticket_type), now_ts()) {
                 Ok(t) => print_ticket_line(&t),
-                Err(e) => print_error(e),
+                Err(e) => print_error(format, e),
             }
         }
         TicketAction::Assign { id, assignee } => {
             match ticket_service::assign_ticket(&repo, &id, &assignee, now_ts()) {
                 Ok(t) => print_ticket_line(&t),
-                Err(e) => print_error(e),
+                Err(e) => print_error(format, e),
             }
         }
         TicketAction::Comment { id, text } => {
             match ticket_service::comment_ticket(&repo, &id, &text, &author, now_ts()) {
                 Ok(t) => print_ticket_line(&t),
-                Err(e) => print_error(e),
+                Err(e) => print_error(format, e),
             }
         }
     }

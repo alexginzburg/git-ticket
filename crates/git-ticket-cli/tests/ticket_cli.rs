@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
+use serde_json::Value;
 use std::process::Command as StdCommand;
 
 fn init_repo(dir: &std::path::Path) {
@@ -73,6 +74,52 @@ fn list_defaults_to_open_status_only() {
     Command::cargo_bin("git-ticket").unwrap()
         .current_dir(dir.path()).args(["list", "--status", "bogus"])
         .assert().failure().stderr(contains("invalid status"));
+}
+
+#[test]
+fn list_and_show_format_json() {
+    let dir = tempfile::tempdir().unwrap();
+    init_repo(dir.path());
+
+    Command::cargo_bin("git-ticket").unwrap()
+        .current_dir(dir.path()).args(["new", "Fix login", "-b", "details", "--type", "bug"])
+        .assert().success();
+
+    let output = Command::cargo_bin("git-ticket").unwrap()
+        .current_dir(dir.path()).args(["list", "--format", "json"])
+        .output().unwrap();
+    assert!(output.status.success());
+    let list_json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let tickets = list_json.as_array().unwrap();
+    assert_eq!(tickets.len(), 1);
+    let ticket = &tickets[0];
+    assert_eq!(ticket["title"], "Fix login");
+    assert_eq!(ticket["status"], "open");
+    assert_eq!(ticket["ticket_type"], "bug");
+    assert!(ticket.get("comments").is_none(), "list JSON should omit comments: {ticket}");
+    let id = ticket["id"].as_str().unwrap().to_string();
+
+    let output = Command::cargo_bin("git-ticket").unwrap()
+        .current_dir(dir.path()).args(["show", &id, "--format", "json"])
+        .output().unwrap();
+    assert!(output.status.success());
+    let show_json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(show_json["title"], "Fix login");
+    assert_eq!(show_json["body"], "details");
+    assert!(show_json["comments"].is_array());
+}
+
+#[test]
+fn format_json_errors_on_unsupported_command() {
+    let dir = tempfile::tempdir().unwrap();
+    init_repo(dir.path());
+
+    let output = Command::cargo_bin("git-ticket").unwrap()
+        .current_dir(dir.path()).args(["new", "Fix login", "--format", "json"])
+        .output().unwrap();
+    assert!(!output.status.success());
+    let err_json: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert!(err_json["error"].is_string());
 }
 
 #[test]

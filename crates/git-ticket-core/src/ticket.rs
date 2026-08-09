@@ -1,14 +1,15 @@
 use crate::event::{TicketEvent, TicketStatus, TicketType};
+use serde::Serialize;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Comment {
     pub body: String,
     pub author: String,
     pub ts: u64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TicketState {
     pub id: String,
     pub title: String,
@@ -208,5 +209,17 @@ mod tests {
         assert_eq!(all.len(), 2);
         assert!(all.contains_key("a"));
         assert!(all.contains_key("b"));
+    }
+
+    #[test]
+    fn ticket_state_serializes_to_json_with_expected_keys() {
+        let events = vec![created("a", 1)];
+        let state = project_ticket("a", &events).unwrap();
+        let json = serde_json::to_string(&state).unwrap();
+        for key in ["id", "title", "body", "branch", "author", "created_ts", "status", "ticket_type", "assignee", "comments"] {
+            assert!(json.contains(&format!("\"{key}\"")), "missing key '{key}' in {json}");
+        }
+        assert!(json.contains("\"open\""));
+        assert!(json.contains("\"task\""));
     }
 }

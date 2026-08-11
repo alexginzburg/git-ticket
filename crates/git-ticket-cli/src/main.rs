@@ -43,5 +43,6 @@ fn main() {
         Command::Sync { remote } => commands::sync::run(remote),
         Command::Doctor { prune } => commands::doctor::run(prune),
         Command::Web { port } => commands::web::run(port),
+        Command::Log { revspec } => commands::log::run(revspec),
     }
 }

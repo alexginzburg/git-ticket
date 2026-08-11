@@ -10,7 +10,7 @@ pub fn run() {
         }
     };
     match init_repo_config(&repo) {
-        Ok(()) => println!("git-ticket configured (notes merge strategy set to cat_sort_uniq)"),
+        Ok(()) => println!("git-ticket configured (notes merge strategy set to cat_sort_uniq, notes.displayRef set for git log)"),
         Err(e) => {
             eprintln!("error: {e}");
             std::process::exit(1);

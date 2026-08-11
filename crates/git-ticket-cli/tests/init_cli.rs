@@ -18,7 +18,7 @@ fn init_sets_merge_strategy_and_is_idempotent() {
 
     Command::cargo_bin("git-ticket").unwrap()
         .current_dir(dir.path()).arg("init")
-        .assert().success().stdout(contains("configured"));
+        .assert().success().stdout(contains("configured")).stdout(contains("displayRef"));
 
     // running again must not error
     Command::cargo_bin("git-ticket").unwrap()

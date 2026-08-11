@@ -83,6 +83,9 @@ pub enum Command {
         #[arg(long)]
         port: Option<u16>,
     },
+    Log {
+        revspec: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

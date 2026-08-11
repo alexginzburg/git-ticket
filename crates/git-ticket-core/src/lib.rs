@@ -2,6 +2,7 @@
 pub mod diff;
 pub mod doctor;
 pub mod event;
+pub mod history;
 pub mod id;
 pub mod log;
 pub mod repo;

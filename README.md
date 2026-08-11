@@ -67,6 +67,20 @@ Everyone on the team needs `git-ticket` installed locally (same `cargo install` 
 - `git ticket init` — explicitly configure the repo (idempotent; commands also self-initialize lazily on first use, so this is optional).
 - `git ticket doctor [--prune]` — find pointer refs left dangling by a partial sync; `--prune` removes them (never runs automatically).
 
+## Viewing tickets/reviews alongside `git log`
+
+`git ticket log [<revspec>]` walks commit history (defaulting to `HEAD`, or a given revspec) and prints a decoration line under any commit that's the anchor of a ticket or review, showing its *current* projected state (not just its state at creation):
+
+```
+00dbe55 feature work
+        [TICKET-a1b2c3d4 "Fix login bug" status=open type=bug]
+        [REVIEW-9f8e7d6c target=00dbe55 base=main verdict=pending]
+```
+
+A ticket decorates the merge-base commit of its branch; a review decorates the exact commit snapshotted when it was opened — see `CLAUDE.md` for why.
+
+For raw access to the underlying event log, `git ticket init` (and lazy first use) also adds `refs/notes/git-ticket/tickets` and `refs/notes/git-ticket/reviews` to your repo's local `notes.displayRef` config, so plain `git log` shows the raw JSONL events on those same commits without any extra flags. That's a local-only setting — `git config --unset-all notes.displayRef` turns it back off if you find it noisy.
+
 ## Development
 
 See [`CLAUDE.md`](CLAUDE.md) for build/test commands and architecture notes.

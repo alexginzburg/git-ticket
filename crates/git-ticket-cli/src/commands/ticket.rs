@@ -6,7 +6,7 @@ use git_ticket_core::ticket::TicketState;
 use git_ticket_core::ticket_service::{self, TicketError};
 use serde::Serialize;
 
-fn status_str(status: &TicketStatus) -> &'static str {
+pub(crate) fn status_str(status: &TicketStatus) -> &'static str {
     match status {
         TicketStatus::Open => "open",
         TicketStatus::InProgress => "in-progress",
@@ -32,7 +32,7 @@ fn to_core_type(t: TicketTypeArg) -> TicketType {
     }
 }
 
-fn type_str(ticket_type: &TicketType) -> &'static str {
+pub(crate) fn type_str(ticket_type: &TicketType) -> &'static str {
     match ticket_type {
         TicketType::Task => "task",
         TicketType::Bug => "bug",

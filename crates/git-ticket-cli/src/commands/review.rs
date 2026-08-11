@@ -16,7 +16,7 @@ fn parse_verdict(s: &str) -> Result<Verdict, String> {
     }
 }
 
-fn verdict_str(v: &Verdict) -> &'static str {
+pub(crate) fn verdict_str(v: &Verdict) -> &'static str {
     match v {
         Verdict::Approve => "approve",
         Verdict::RequestChanges => "request-changes",

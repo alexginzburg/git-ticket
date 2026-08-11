@@ -42,11 +42,35 @@ pub fn ensure_merge_strategy(repo: &Repository, notes_ref: &str) -> Result<(), E
     Ok(())
 }
 
+/// Adds `notes_ref` to the local `notes.displayRef` list (if not already
+/// present) so plain `git log` shows it without needing an explicit
+/// `--notes=` flag. Purely local config -- never creates or merges note
+/// content, so it's safe to call repeatedly and safe to `--unset-all` to
+/// opt back out.
+pub fn ensure_notes_display_ref(repo: &Repository, notes_ref: &str) -> Result<(), Error> {
+    let mut config = repo.config()?;
+    let mut already_set = false;
+    if let Ok(mut entries) = config.multivar("notes.displayRef", None) {
+        while let Some(Ok(entry)) = entries.next() {
+            if entry.value() == Some(notes_ref) {
+                already_set = true;
+                break;
+            }
+        }
+    }
+    if !already_set {
+        config.set_multivar("notes.displayRef", "^$", notes_ref)?;
+    }
+    Ok(())
+}
+
 /// Runs the same idempotent setup lazily performed on first write, so
 /// `git ticket init` and organic first use converge on identical state.
 pub fn init_repo_config(repo: &Repository) -> Result<(), Error> {
     ensure_merge_strategy(repo, TICKETS_NOTES_REF)?;
     ensure_merge_strategy(repo, REVIEWS_NOTES_REF)?;
+    ensure_notes_display_ref(repo, TICKETS_NOTES_REF)?;
+    ensure_notes_display_ref(repo, REVIEWS_NOTES_REF)?;
     Ok(())
 }
 

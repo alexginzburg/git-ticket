@@ -1,5 +1,8 @@
 use git2::Repository;
-use git_ticket_core::repo::{append_note_line, ensure_merge_strategy, read_note, TICKETS_NOTES_REF};
+use git_ticket_core::repo::{
+    append_note_line, ensure_merge_strategy, ensure_notes_display_ref, read_note, REVIEWS_NOTES_REF,
+    TICKETS_NOTES_REF,
+};
 
 fn init_repo_with_one_commit() -> (tempfile::TempDir, Repository) {
     let dir = tempfile::tempdir().unwrap();
@@ -45,4 +48,21 @@ fn ensure_merge_strategy_sets_config_once() {
     assert_eq!(value, "cat_sort_uniq");
     // calling twice must not error
     ensure_merge_strategy(&repo, TICKETS_NOTES_REF).unwrap();
+}
+
+#[test]
+fn ensure_notes_display_ref_adds_both_refs_without_duplicating() {
+    let (_dir, repo) = init_repo_with_one_commit();
+    ensure_notes_display_ref(&repo, TICKETS_NOTES_REF).unwrap();
+    ensure_notes_display_ref(&repo, REVIEWS_NOTES_REF).unwrap();
+    // calling again must not duplicate the entry
+    ensure_notes_display_ref(&repo, TICKETS_NOTES_REF).unwrap();
+
+    let config = repo.config().unwrap();
+    let mut entries = config.multivar("notes.displayRef", None).unwrap();
+    let mut values = Vec::new();
+    while let Some(Ok(entry)) = entries.next() {
+        values.push(entry.value().unwrap().to_string());
+    }
+    assert_eq!(values, vec![TICKETS_NOTES_REF.to_string(), REVIEWS_NOTES_REF.to_string()]);
 }
